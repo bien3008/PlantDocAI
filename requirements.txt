@@ -1,0 +1,13 @@
+# Core DL
+torch
+torchvision
+
+# Image IO
+pillow
+
+# Utils
+numpy
+tqdm
+
+# Optional but common for datasets/logging in projects
+pandas

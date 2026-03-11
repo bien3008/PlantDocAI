@@ -7,7 +7,7 @@ __pycache__/
 *.so
 
 docs/TODO.md
-
+.vscode
 # Distribution / packaging
 .Python
 build/
