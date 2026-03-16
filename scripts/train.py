@@ -3,10 +3,11 @@ from pathlib import Path
 
 import torch
 from torch import nn
-from torch.utils.data import DataLoader, default_collate
-from torchvision import transforms
+import sys
 
-from src.data.safeImageFolder import SafeImageFolder
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
+from src.data.dataLoader import buildDataLoaders
 from src.models.modelFactory import buildModel
 from src.training.checkpoint import saveJson
 from src.training.trainer import Trainer
@@ -14,7 +15,8 @@ from src.training.trainer import Trainer
 
 def parseArgs() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train PlantDoc AI baseline model")
-    parser.add_argument("--dataDir", type=str, default="data/Plantvillage", help="Root dir containing train/val/test")
+    parser.add_argument("--dataDir", type=str, default="data/Plantvillage", help="Root dir containing images")
+    parser.add_argument("--splitDir", type=str, default="data/splits", help="Dir containing train.csv, val.csv, test.csv")
     parser.add_argument("--outputDir", type=str, default="artifacts/mobilenetV2Baseline", help="Output directory")
     parser.add_argument("--modelName", type=str, default="mobilenetV2", choices=["mobilenetV2", "efficientnetB0"])
     parser.add_argument("--imageSize", type=int, default=224)
@@ -43,82 +45,7 @@ def resolveDevice(deviceArg: str) -> torch.device:
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def safeCollate(batch):
-    validItems = [item for item in batch if item is not None]
-    if len(validItems) == 0:
-        return None
-    return default_collate(validItems)
 
-
-def buildTransforms(imageSize: int):
-    trainTransform = transforms.Compose([
-        transforms.Resize((imageSize, imageSize)),
-        transforms.RandomHorizontalFlip(p=0.5),
-        transforms.RandomRotation(degrees=10),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
-
-    evalTransform = transforms.Compose([
-        transforms.Resize((imageSize, imageSize)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
-
-    return trainTransform, evalTransform
-
-
-def buildDatasets(dataDir: str, imageSize: int):
-    trainDir = Path(dataDir) / "train"
-    valDir = Path(dataDir) / "val"
-
-    if not trainDir.exists():
-        raise FileNotFoundError(f"Train dir not found: {trainDir}")
-    if not valDir.exists():
-        raise FileNotFoundError(f"Val dir not found: {valDir}")
-
-    trainTransform, evalTransform = buildTransforms(imageSize)
-
-    trainDataset = SafeImageFolder(root=str(trainDir), transform=trainTransform)
-    valDataset = SafeImageFolder(root=str(valDir), transform=evalTransform)
-
-    if len(trainDataset) == 0:
-        raise RuntimeError(f"Empty train dataset: {trainDir}")
-    if len(valDataset) == 0:
-        raise RuntimeError(f"Empty val dataset: {valDir}")
-
-    if trainDataset.classes != valDataset.classes:
-        raise ValueError(
-            "Label mismatch between train and val.\n"
-            f"train classes: {trainDataset.classes}\n"
-            f"val classes: {valDataset.classes}"
-        )
-
-    return trainDataset, valDataset
-
-
-def buildLoaders(trainDataset, valDataset, batchSize: int, numWorkers: int):
-    pinMemory = torch.cuda.is_available()
-
-    trainLoader = DataLoader(
-        trainDataset,
-        batch_size=batchSize,
-        shuffle=True,
-        num_workers=numWorkers,
-        pin_memory=pinMemory,
-        collate_fn=safeCollate,
-    )
-
-    valLoader = DataLoader(
-        valDataset,
-        batch_size=batchSize,
-        shuffle=False,
-        num_workers=numWorkers,
-        pin_memory=pinMemory,
-        collate_fn=safeCollate,
-    )
-
-    return trainLoader, valLoader
 
 
 def countParameters(model: torch.nn.Module) -> tuple[int, int]:
@@ -131,15 +58,19 @@ def main() -> None:
     args = parseArgs()
     device = resolveDevice(args.device)
 
-    trainDataset, valDataset = buildDatasets(args.dataDir, args.imageSize)
-    trainLoader, valLoader = buildLoaders(
-        trainDataset=trainDataset,
-        valDataset=valDataset,
+    loaders, classToId = buildDataLoaders(
+        dataDir=args.dataDir,
+        splitDir=args.splitDir,
+        inputSize=args.imageSize,
         batchSize=args.batchSize,
         numWorkers=args.numWorkers,
     )
 
-    classNames = trainDataset.classes
+    trainLoader = loaders["train"]
+    valLoader = loaders["val"]
+
+    idToClass = {v: k for k, v in classToId.items()}
+    classNames = [idToClass[i] for i in range(len(classToId))]
     numClasses = len(classNames)
 
     model = buildModel(
@@ -181,6 +112,7 @@ def main() -> None:
 
     config = {
         "dataDir": args.dataDir,
+        "splitDir": args.splitDir,
         "outputDir": args.outputDir,
         "modelName": args.modelName,
         "imageSize": args.imageSize,
