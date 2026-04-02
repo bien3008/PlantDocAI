@@ -9,13 +9,15 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from src.data.dataLoader import buildDataLoaders
 from src.models.modelFactory import buildModel
-from src.training.checkpoint import saveJson
+from src.training.checkpoint import saveJson, loadCheckpoint
 from src.training.trainer import Trainer
 from src.utils.configUtils import loadYamlConfig
+import os
 
 def parseArgs() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train PlantDoc AI baseline model")
     parser.add_argument("--config", type=str, default="configs/baseline.yaml", help="Path to YAML config file")
+    parser.add_argument("--resume", action="store_true", help="Resume training from the last checkpoint if it exists")
     return parser.parse_args()
 
 def resolveDevice(deviceArg: str) -> torch.device:
@@ -122,7 +124,26 @@ def main() -> None:
         saveBestMetric="valTop1",
     )
 
-    trainer.fit(numEpochs=numEpochs, config=config)
+    startEpoch = 1
+    if args.resume:
+        lastCheckpointPath = outputDir / "checkpoints" / "last.pt"
+        if lastCheckpointPath.exists():
+            print(f"[INFO] Resuming from checkpoint: {lastCheckpointPath}")
+            checkpoint = loadCheckpoint(
+                checkpointPath=str(lastCheckpointPath),
+                model=model,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                mapLocation=str(device)
+            )
+            startEpoch = checkpoint.get("epoch", 0) + 1
+            bestMetric = checkpoint.get("bestMetric", float("-inf"))
+            trainer.bestMetric = bestMetric
+            print(f"[INFO] Restored state. Resuming from epoch {startEpoch}...")
+        else:
+            print(f"[INFO] --resume flag is set but {lastCheckpointPath} not found. Starting from scratch.")
+
+    trainer.fit(numEpochs=numEpochs, config=config, startEpoch=startEpoch)
 
 
 if __name__ == "__main__":

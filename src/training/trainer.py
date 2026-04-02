@@ -129,10 +129,10 @@ class Trainer:
             "topK": topKMeter.avg,
         }
 
-    def fit(self, numEpochs: int, config: Dict[str, Any]):
+    def fit(self, numEpochs: int, config: Dict[str, Any], startEpoch: int = 1):
         print("[INFO] Start training loop")
 
-        for epoch in range(1, numEpochs + 1):
+        for epoch in range(startEpoch, numEpochs + 1):
             startTime = time.time()
 
             trainMetrics = self._runOneEpoch(self.trainLoader, training=True)
