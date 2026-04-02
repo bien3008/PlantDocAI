@@ -39,7 +39,7 @@ def loadCheckpoint(
     optimizer: Optional[torch.optim.Optimizer] = None,
     scheduler: Optional[Any] = None,
     mapLocation: str = "cpu",
-) -> Dict[str, Any]:
+):
     """
     Load checkpoint vào model và tùy chọn load luôn optimizer/scheduler.
     """
@@ -56,7 +56,7 @@ def loadCheckpoint(
     return checkpoint
 
 
-def saveJson(savePath: str, data: Dict[str, Any]) -> None:
+def saveJson(savePath: str, data: Dict[str, Any]):
     """
     Save dictionary ra file JSON.
     """

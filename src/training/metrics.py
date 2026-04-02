@@ -8,25 +8,25 @@ class AverageMeter:
     Dùng để cộng dồn metric qua nhiều batch rồi tính trung bình cuối epoch.
     """
 
-    def __init__(self) -> None:
+    def __init__(self):
         self.reset()
 
-    def reset(self) -> None:
+    def reset(self):
         self.sum = 0.0
         self.count = 0
 
-    def update(self, value: float, n: int = 1) -> None:
+    def update(self, value: float, n: int = 1):
         self.sum += value * n
         self.count += n
 
     @property
-    def avg(self) -> float:
+    def avg(self):
         if self.count == 0:
             return 0.0
         return self.sum / self.count
 
 
-def accuracyAtK(logits: torch.Tensor, targets: torch.Tensor, topK: int = 3) -> Dict[str, float]:
+def accuracyAtK(logits: torch.Tensor, targets: torch.Tensor, topK: int = 3):
     """
     Tính top1 và topK accuracy cho 1 batch.
 
@@ -59,7 +59,7 @@ def computePerClassAccuracy(
     allPreds: Iterable[int],
     allTargets: Iterable[int],
     classNames: List[str],
-) -> Dict[str, float]:
+):
     """
     Tính accuracy theo từng class.
 

@@ -11,25 +11,12 @@ from src.data.dataLoader import buildDataLoaders
 from src.models.modelFactory import buildModel
 from src.training.checkpoint import saveJson
 from src.training.trainer import Trainer
-
+from src.utils.configUtils import loadYamlConfig
 
 def parseArgs() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train PlantDoc AI baseline model")
-    parser.add_argument("--dataDir", type=str, default="data/Plantvillage", help="Root dir containing images")
-    parser.add_argument("--splitDir", type=str, default="data/splits", help="Dir containing train.csv, val.csv, test.csv")
-    parser.add_argument("--outputDir", type=str, default="artifacts/mobilenetV2Baseline", help="Output directory")
-    parser.add_argument("--modelName", type=str, default="mobilenetV2", choices=["mobilenetV2", "efficientnetB0"])
-    parser.add_argument("--imageSize", type=int, default=224)
-    parser.add_argument("--batchSize", type=int, default=32)
-    parser.add_argument("--numEpochs", type=int, default=5)
-    parser.add_argument("--learningRate", type=float, default=1e-3)
-    parser.add_argument("--weightDecay", type=float, default=1e-4)
-    parser.add_argument("--numWorkers", type=int, default=2)
-    parser.add_argument("--topK", type=int, default=3)
-    parser.add_argument("--device", type=str, default="auto", choices=["auto", "cpu", "cuda"])
-    parser.add_argument("--freezeBackbone", action="store_true", help="Freeze backbone and train classifier head only")
+    parser.add_argument("--config", type=str, default="configs/baseline.yaml", help="Path to YAML config file")
     return parser.parse_args()
-
 
 def resolveDevice(deviceArg: str) -> torch.device:
     if deviceArg == "cuda" and torch.cuda.is_available():
@@ -44,26 +31,26 @@ def resolveDevice(deviceArg: str) -> torch.device:
 
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
-
-
-
 def countParameters(model: torch.nn.Module) -> tuple[int, int]:
     totalParams = sum(param.numel() for param in model.parameters())
     trainableParams = sum(param.numel() for param in model.parameters() if param.requires_grad)
     return totalParams, trainableParams
 
-
 def main() -> None:
     args = parseArgs()
-    device = resolveDevice(args.device)
+    
+    # Load config from YAML
+    config = loadYamlConfig(args.config)
+    
+    deviceArg = config.get("device", "auto")
+    device = resolveDevice(deviceArg)
 
     loaders, classToId = buildDataLoaders(
-        dataDir=args.dataDir,
-        splitDir=args.splitDir,
-        inputSize=args.imageSize,
-        batchSize=args.batchSize,
-        numWorkers=args.numWorkers,
+        dataDir=config.get("dataDir", "data/Plantvillage"),
+        splitDir=config.get("splitDir", "data/splits"),
+        inputSize=config.get("imageSize", 224),
+        batchSize=config.get("batchSize", 32),
+        numWorkers=config.get("numWorkers", 2),
     )
 
     trainLoader = loaders["train"]
@@ -72,19 +59,22 @@ def main() -> None:
     idToClass = {v: k for k, v in classToId.items()}
     classNames = [idToClass[i] for i in range(len(classToId))]
     numClasses = len(classNames)
+    
+    modelName = config.get("modelName", "mobilenetV2")
+    freezeBackbone = config.get("freezeBackbone", False)
 
     model = buildModel(
-        modelName=args.modelName,
+        modelName=modelName,
         numClasses=numClasses,
         usePretrained=True,
-        freezeBackbone=args.freezeBackbone,
+        freezeBackbone=freezeBackbone,
     ).to(device)
 
     totalParams, trainableParams = countParameters(model)
     trainableRatio = (trainableParams / totalParams) if totalParams > 0 else 0.0
 
-    print(f"[INFO] modelName={args.modelName}")
-    print(f"[INFO] freezeBackbone={args.freezeBackbone}")
+    print(f"[INFO] modelName={modelName}")
+    print(f"[INFO] freezeBackbone={freezeBackbone}")
     print(f"[INFO] totalParams={totalParams:,}")
     print(f"[INFO] trainableParams={trainableParams:,}")
     print(f"[INFO] trainableRatio={trainableRatio:.4f}")
@@ -97,8 +87,8 @@ def main() -> None:
 
     optimizer = torch.optim.Adam(
         trainableModelParams,
-        lr=args.learningRate,
-        weight_decay=args.weightDecay,
+        lr=config.get("learningRate", 1e-3),
+        weight_decay=config.get("weightDecay", 1e-4),
     )
 
     scheduler = torch.optim.lr_scheduler.StepLR(
@@ -107,28 +97,16 @@ def main() -> None:
         gamma=0.1,
     )
 
-    outputDir = Path(args.outputDir)
+    outputDir = Path(config.get("outputDir", "artifacts/baseline"))
     outputDir.mkdir(parents=True, exist_ok=True)
 
-    config = {
-        "dataDir": args.dataDir,
-        "splitDir": args.splitDir,
-        "outputDir": args.outputDir,
-        "modelName": args.modelName,
-        "imageSize": args.imageSize,
-        "batchSize": args.batchSize,
-        "numEpochs": args.numEpochs,
-        "learningRate": args.learningRate,
-        "weightDecay": args.weightDecay,
-        "numWorkers": args.numWorkers,
-        "topK": args.topK,
-        "device": str(device),
-        "numClasses": numClasses,
-        "classNames": classNames,
-        "freezeBackbone": args.freezeBackbone,
-    }
-
+    # Save a copy of the actual runtime configuration
+    config["numClasses"] = numClasses
+    config["classNames"] = classNames
     saveJson(str(outputDir / "config.json"), config)
+
+    topK = config.get("topK", 3)
+    numEpochs = config.get("numEpochs", 5)
 
     trainer = Trainer(
         model=model,
@@ -140,11 +118,11 @@ def main() -> None:
         scheduler=scheduler,
         classNames=classNames,
         outputDir=str(outputDir),
-        topK=args.topK,
+        topK=topK,
         saveBestMetric="valTop1",
     )
 
-    trainer.fit(numEpochs=args.numEpochs, config=config)
+    trainer.fit(numEpochs=numEpochs, config=config)
 
 
 if __name__ == "__main__":

@@ -18,16 +18,10 @@ class SplitConfig:
     seed: int = 42
 
 def createSplits(
-    dataDir: str,
-    outDir: str,
+    dataDir,
+    outDir,
     splitConfig: SplitConfig,
-) -> Dict[str, str]:
-    """
-    Create stratified train/val/test splits and save CSVs:
-      train.csv, val.csv, test.csv
-    Each row: imagePath,labelId
-    Returns dict of paths.
-    """
+): 
     os.makedirs(outDir, exist_ok=True)
 
     baseDs = PlantVillageDataset(rootDir=dataDir, samples=None, transform=None)
@@ -37,7 +31,6 @@ def createSplits(
     if abs(splitConfig.trainRatio + splitConfig.valRatio + splitConfig.testRatio - 1.0) > 1e-6:
         raise ValueError("trainRatio + valRatio + testRatio must sum to 1.0")
 
-    # First split: train vs temp (val+test)
     tempRatio = splitConfig.valRatio + splitConfig.testRatio
     trainSamples, tempSamples, trainLabels, tempLabels = train_test_split(
         samples,
@@ -47,7 +40,6 @@ def createSplits(
         stratify=labels,
     )
 
-    # Second split: val vs test (from temp)
     if splitConfig.testRatio == 0:
         valSamples, testSamples = tempSamples, []
     else:
@@ -71,13 +63,12 @@ def createSplits(
     _writeSamplesCsv(paths["val"], valSamples)
     _writeSamplesCsv(paths["test"], testSamples)
 
-    # Save class mapping for later decode (important for Streamlit)
     classToId, _ = baseDs.getClassMapping()
     _writeClassesCsv(paths["classes"], classToId)
 
     return paths
 
-def loadSplitCsv(csvPath: str) -> List[SampleItem]:
+def loadSplitCsv(csvPath):
     if not os.path.isfile(csvPath):
         raise FileNotFoundError(f"Split CSV not found: {csvPath}")
 
@@ -92,14 +83,14 @@ def loadSplitCsv(csvPath: str) -> List[SampleItem]:
         raise ValueError(f"No rows loaded from split CSV: {csvPath}")
     return samples
 
-def _writeSamplesCsv(outPath: str, samples: List[SampleItem]) -> None:
+def _writeSamplesCsv(outPath, samples):
     with open(outPath, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=["imagePath", "labelId"])
         writer.writeheader()
         for s in samples:
             writer.writerow({"imagePath": s.imagePath, "labelId": s.labelId})
 
-def _writeClassesCsv(outPath: str, classToId: Dict[str, int]) -> None:
+def _writeClassesCsv(outPath, classToId):
     with open(outPath, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=["className", "labelId"])
         writer.writeheader()

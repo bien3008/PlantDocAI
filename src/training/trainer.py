@@ -24,7 +24,7 @@ class Trainer:
         outputDir: str,
         topK: int = 3,
         saveBestMetric: str = "valTop1",
-    ) -> None:
+    ):
         self.model = model
         self.device = device
         self.trainLoader = trainLoader
@@ -47,7 +47,7 @@ class Trainer:
 
         self._initCsvLogger()
 
-    def _initCsvLogger(self) -> None:
+    def _initCsvLogger(self):
         if not self.csvLogPath.exists():
             with open(self.csvLogPath, "w", newline="", encoding="utf-8") as file:
                 writer = csv.writer(file)
@@ -63,7 +63,7 @@ class Trainer:
                     "epochSeconds",
                 ])
 
-    def _writeCsvRow(self, rowData: Dict[str, Any]) -> None:
+    def _writeCsvRow(self, rowData: Dict[str, Any]):
         with open(self.csvLogPath, "a", newline="", encoding="utf-8") as file:
             writer = csv.writer(file)
             writer.writerow([
@@ -78,7 +78,7 @@ class Trainer:
                 f"{rowData['epochSeconds']:.2f}",
             ])
 
-    def _runOneEpoch(self, loader: DataLoader, training: bool) -> Dict[str, float]:
+    def _runOneEpoch(self, loader: DataLoader, training: bool):
         if training:
             self.model.train()
         else:
@@ -129,7 +129,7 @@ class Trainer:
             "topK": topKMeter.avg,
         }
 
-    def fit(self, numEpochs: int, config: Dict[str, Any]) -> None:
+    def fit(self, numEpochs: int, config: Dict[str, Any]):
         print("[INFO] Start training loop")
 
         for epoch in range(1, numEpochs + 1):

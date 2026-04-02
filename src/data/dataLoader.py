@@ -10,10 +10,7 @@ from .plantVillageDataset import PlantVillageDataset
 from .dataSplit import loadSplitCsv
 from .dataTransforms import buildTransforms
 
-def _safeCollate(batch: List[Any]):
-    """
-    Filter out None samples (e.g., broken images) so training doesn't crash.
-    """
+def _safeCollate(batch):
     batch = [b for b in batch if b is not None]
     if len(batch) == 0:
         return None
@@ -27,11 +24,8 @@ def buildDataLoaders(
     numWorkers: int = 2,
     pinMemory: Optional[bool] = None,
     returnPath: bool = False,
-) -> Tuple[Dict[str, DataLoader], Dict[str, int]]:
-    """
-    Build dataloaders from split CSVs in splitDir.
-    Returns (loaders, classToId).
-    """
+):
+
     tf = buildTransforms(inputSize=inputSize)
 
     trainSamples = loadSplitCsv(f"{splitDir}/train.csv")

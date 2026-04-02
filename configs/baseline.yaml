@@ -1,0 +1,16 @@
+experimentName: "mobilenetV2Baseline"
+dataDir: "data/Plantvillage"
+splitDir: "data/splits"
+outputDir: "artifacts/mobilenetV2Baseline"
+
+modelName: "mobilenetV2"
+imageSize: 224
+freezeBackbone: false
+
+batchSize: 32
+numEpochs: 5
+learningRate: 0.001
+weightDecay: 0.0001
+numWorkers: 2
+topK: 3
+device: "auto"

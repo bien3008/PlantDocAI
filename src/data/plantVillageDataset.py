@@ -14,16 +14,7 @@ class SampleItem:
     imagePath: str
     labelId: int
 
-class PlantVillageDataset:
-    """
-    Robust dataset loader for PlantVillage-like structures.
-
-    Supported layouts (examples):
-      1) root/classA/*.jpg
-      2) root/color/classA/*.jpg
-      3) root/PlantVillage/color/classA/*.jpg
-      4) root/<anything>/classA/*.jpg  (auto-detect best level)
-    """
+class PlantVillageDataset: 
 
     def __init__(
         self,
@@ -55,10 +46,10 @@ class PlantVillageDataset:
                 f"No samples found. rootDir={self.rootDir}. Check dataset structure."
             )
 
-    def __len__(self) -> int:
+    def __len__(self):
         return len(self.samples)
 
-    def __getitem__(self, idx: int) -> Any:
+    def __getitem__(self, idx: int):
         item = self.samples[idx]
         imagePath = item.imagePath
         if not os.path.isabs(imagePath):
@@ -68,7 +59,7 @@ class PlantVillageDataset:
             with Image.open(imagePath) as img:
                 img = img.convert("RGB")
         except Exception:
-            return None  # let collateFn drop it
+            return None
 
         if self.transform is not None:
             img = self.transform(img)
@@ -78,8 +69,7 @@ class PlantVillageDataset:
         return img, item.labelId
 
     @staticmethod
-    def _isClassFolder(dirPath: str) -> bool:
-        """A class folder: has at least 1 image file (directly or in subfolders)."""
+    def _isClassFolder(dirPath: str):
         if not os.path.isdir(dirPath):
             return False
         for dp, _, fns in os.walk(dirPath):
@@ -89,8 +79,7 @@ class PlantVillageDataset:
         return False
 
     @classmethod
-    def _looksLikeClassLevel(cls, rootDir: str, minClasses: int = 2) -> bool:
-        """rootDir is class-level if it contains >= minClasses subfolders that look like class folders."""
+    def _looksLikeClassLevel(cls, rootDir: str, minClasses: int = 2):
         if not os.path.isdir(rootDir):
             return False
         subDirs = []
@@ -106,20 +95,14 @@ class PlantVillageDataset:
         return classLike >= minClasses
 
     @classmethod
-    def _resolveDatasetRoot(cls, startDir: str, maxDepth: int = 3) -> str:
-        """
-        Try to find the directory level where immediate children are class folders.
-        Search BFS up to maxDepth.
-        """
+    def _resolveDatasetRoot(cls, startDir: str, maxDepth: int = 3):
         startDir = os.path.abspath(startDir)
         if not os.path.isdir(startDir):
             raise FileNotFoundError(f"Dataset rootDir not found: {startDir}")
 
-        # If already class-level, use it
         if cls._looksLikeClassLevel(startDir):
             return startDir
 
-        # BFS search
         queue = [(startDir, 0)]
         candidates = []
 
@@ -140,9 +123,8 @@ class PlantVillageDataset:
                         candidates.append(full)
                     queue.append((full, depth + 1))
 
-        # Pick best candidate: the one with most class folders
         if candidates:
-            def score(path: str) -> int:
+            def score(path: str):
                 cnt = 0
                 for name in os.listdir(path):
                     full = os.path.join(path, name)
@@ -153,7 +135,6 @@ class PlantVillageDataset:
             candidates.sort(key=score, reverse=True)
             return candidates[0]
 
-        # Nothing found: raise with helpful hint
         topEntries = []
         try:
             topEntries = os.listdir(startDir)[:20]
@@ -167,7 +148,7 @@ class PlantVillageDataset:
         )
 
     @staticmethod
-    def _scanClasses(rootDir: str) -> Dict[str, int]:
+    def _scanClasses(rootDir: str):
         classNames = []
         for name in os.listdir(rootDir):
             full = os.path.join(rootDir, name)
@@ -181,7 +162,7 @@ class PlantVillageDataset:
         return {c: i for i, c in enumerate(classNames)}
 
     @staticmethod
-    def _scanSamples(rootDir: str, classToId: Dict[str, int]) -> List[SampleItem]:
+    def _scanSamples(rootDir: str, classToId: Dict[str, int]):
         samples: List[SampleItem] = []
         for className, labelId in classToId.items():
             classDir = os.path.join(rootDir, className)
