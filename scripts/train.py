@@ -12,12 +12,14 @@ from src.models.modelFactory import buildModel
 from src.training.checkpoint import saveJson, loadCheckpoint
 from src.training.trainer import Trainer
 from src.utils.configUtils import loadYamlConfig
+from src.utils.colabUtils import mountGoogleDrive, isColabEnvironment
 import os
 
 def parseArgs() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train PlantDoc AI baseline model")
     parser.add_argument("--config", type=str, default="configs/baseline.yaml", help="Path to YAML config file")
     parser.add_argument("--resume", action="store_true", help="Resume training from the last checkpoint if it exists")
+    parser.add_argument("--useGdrive", action="store_true", help="Mount Google Drive and save artifacts there if running in Colab")
     return parser.parse_args()
 
 def resolveDevice(deviceArg: str) -> torch.device:
@@ -99,7 +101,21 @@ def main() -> None:
         gamma=0.1,
     )
 
-    outputDir = Path(config.get("outputDir", "artifacts/baseline"))
+    outputDirStr = config.get("outputDir", "artifacts/baseline")
+    
+    if args.useGdrive and isColabEnvironment():
+        driveRoot = mountGoogleDrive()
+        if driveRoot:
+            # Output will be redirected to Google Drive
+            gdrivePrefix = os.path.join(driveRoot, "MyDrive", "PlantDocAI_Outputs")
+            # Determine folder name instead of deep nesting
+            baseDirName = os.path.basename(outputDirStr.rstrip("/"))
+            if not baseDirName:
+                baseDirName = "runs"
+            outputDirStr = os.path.join(gdrivePrefix, baseDirName)
+            print(f"[INFO] useGdrive flag enabled. Redirecting output to: {outputDirStr}")
+
+    outputDir = Path(outputDirStr)
     outputDir.mkdir(parents=True, exist_ok=True)
 
     # Save a copy of the actual runtime configuration
