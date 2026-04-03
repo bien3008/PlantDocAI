@@ -12,11 +12,12 @@ from torchvision import transforms
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from src.models.modelFactory import buildModel
+from src.training.checkpoint import loadCheckpoint
 
 def parseArgs():
     parser = argparse.ArgumentParser(description="Inference using a trained model")
     parser.add_argument("--image", type=str, required=True, help="Path to the image to predict")
-    parser.add_argument("--modelDir", type=str, required=True, help="Directory containing config.json and best_model.pth")
+    parser.add_argument("--modelDir", type=str, required=True, help="Directory containing config.json and checkpoint (e.g. checkpoints/best.pt)")
     return parser.parse_args()
 
 def main():
@@ -24,12 +25,18 @@ def main():
     
     modelDir = Path(args.modelDir)
     configPath = modelDir / "config.json"
-    weightsPath = modelDir / "best_model.pth"
     
+    # Priority: checkpoints/best.pt -> best.pt -> checkpoints/last.pt
+    weightsPath = None
+    for p in ["checkpoints/best.pt", "best.pt", "checkpoints/last.pt"]:
+        if (modelDir / p).exists():
+            weightsPath = modelDir / p
+            break
+            
     if not configPath.exists():
-        raise FileNotFoundError(f"Cannot find {configPath}")
-    if not weightsPath.exists():
-        raise FileNotFoundError(f"Cannot find {weightsPath}")
+        raise FileNotFoundError(f"Cannot find config at {configPath}")
+    if weightsPath is None:
+        raise FileNotFoundError(f"Cannot find checkpoint (best.pt) in {modelDir}")
 
     # 1. Load configuration
     with open(configPath, "r", encoding="utf-8") as f:
@@ -44,6 +51,10 @@ def main():
     modelName = config.get("modelName", "mobilenetV2")
     imageSize = config.get("imageSize", 224)
 
+    # Get normalization constants from config or fallback to ImageNet
+    mean = config.get("mean", [0.485, 0.456, 0.406])
+    std = config.get("std", [0.229, 0.224, 0.225])
+
     # 2. Build model architecture
     print(f"[INFO] Building model: {modelName} for {numClasses} classes")
     model = buildModel(
@@ -55,9 +66,8 @@ def main():
 
     # 3. Load the trained weights
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"[INFO] Loading weights onto {device}")
-    stateDict = torch.load(weightsPath, map_location=device)
-    model.load_state_dict(stateDict)
+    print(f"[INFO] Loading weights onto {device} from {weightsPath}")
+    loadCheckpoint(checkpointPath=str(weightsPath), model=model, mapLocation=str(device))
     model.to(device)
     model.eval() # Set model to evaluation mode (important for BatchNorm/Dropout)
 
@@ -65,7 +75,7 @@ def main():
     evalTransform = transforms.Compose([
         transforms.Resize((imageSize, imageSize)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        transforms.Normalize(mean=mean, std=std),
     ])
 
     # 5. Load and preprocess image
@@ -87,7 +97,7 @@ def main():
     # Get Top-3 predictions
     topProb, topClassIdx = torch.topk(probabilities, k=min(3, numClasses))
     
-    print("\n--- TẾT QUẢ DỰ ĐOÁN (Top 3) ---")
+    print("\n--- KẾT QUẢ DỰ ĐOÁN (Top 3) ---")
     for i in range(len(topClassIdx)):
         idx = topClassIdx[i].item()
         prob = topProb[i].item()

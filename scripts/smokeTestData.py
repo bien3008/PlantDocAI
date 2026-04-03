@@ -3,7 +3,9 @@ import argparse
 import os
 
 import torch
-
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 from src.utils.seedUtils import setGlobalSeed
 from src.data.dataSplit import SplitConfig, createSplits
 from src.data.dataLoader import buildDataLoaders
