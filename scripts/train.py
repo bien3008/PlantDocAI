@@ -8,6 +8,7 @@ import sys
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from src.data.dataLoader import buildDataLoaders
+from src.data.dataSplit import createSplits, SplitConfig
 from src.models.modelFactory import buildModel
 from src.training.checkpoint import saveJson, loadCheckpoint
 from src.training.trainer import Trainer
@@ -49,9 +50,23 @@ def main() -> None:
     deviceArg = config.get("device", "auto")
     device = resolveDevice(deviceArg)
 
+    dataDir = config.get("dataDir", "data/Plantvillage")
+    splitDir = config.get("splitDir", "data/splits")
+
+    requiredSplits = ["train.csv", "val.csv", "test.csv", "classes.csv"]
+    hasAllSplits = all((Path(splitDir) / f).exists() for f in requiredSplits)
+
+    if not hasAllSplits:
+        print(f"[INFO] Missing or incomplete split files in '{splitDir}'. Auto-generating splits...")
+        splitConfig = SplitConfig()
+        createSplits(dataDir=dataDir, outDir=splitDir, splitConfig=splitConfig)
+        print("[INFO] Split generation completed.")
+    else:
+        print(f"[INFO] Found existing split files in '{splitDir}'.")
+
     loaders, classToId = buildDataLoaders(
-        dataDir=config.get("dataDir", "data/Plantvillage"),
-        splitDir=config.get("splitDir", "data/splits"),
+        dataDir=dataDir,
+        splitDir=splitDir,
         inputSize=config.get("imageSize", 224),
         batchSize=config.get("batchSize", 32),
         numWorkers=config.get("numWorkers", 2),
@@ -77,11 +92,8 @@ def main() -> None:
     totalParams, trainableParams = countParameters(model)
     trainableRatio = (trainableParams / totalParams) if totalParams > 0 else 0.0
 
-    print(f"[INFO] modelName={modelName}")
-    print(f"[INFO] freezeBackbone={freezeBackbone}")
-    print(f"[INFO] totalParams={totalParams:,}")
-    print(f"[INFO] trainableParams={trainableParams:,}")
-    print(f"[INFO] trainableRatio={trainableRatio:.4f}")
+    print(f"[INFO] Model: {modelName} | Freeze Backbone: {freezeBackbone}")
+    print(f"[INFO] Params: {totalParams:,} (Total) | {trainableParams:,} (Trainable) | {trainableRatio:.1%} Ratio")
 
     criterion = nn.CrossEntropyLoss()
 
