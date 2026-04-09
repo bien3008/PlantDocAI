@@ -1,4 +1,5 @@
 import argparse
+import os
 from pathlib import Path
 
 import torch
@@ -12,9 +13,8 @@ from src.data.dataSplit import createSplits, SplitConfig
 from src.models.modelFactory import buildModel
 from src.training.checkpoint import saveJson, loadCheckpoint
 from src.training.trainer import Trainer
-from src.utils.configUtils import loadYamlConfig
-from src.utils.colabUtils import mountGoogleDrive, isColabEnvironment
-import os
+from src.utils.configUtils import loadTrainingConfig
+from src.utils.colabUtils import setupColabOutput
 
 def parseArgs() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train PlantDoc AI baseline model")
@@ -44,114 +44,84 @@ def countParameters(model: torch.nn.Module) -> tuple[int, int]:
 def main() -> None:
     args = parseArgs()
     
-    # Load config from YAML
-    config = loadYamlConfig(args.config)
-    
-    deviceArg = config.get("device", "auto")
-    device = resolveDevice(deviceArg)
+    # Load typed config object, no more hidden fallbacks
+    config = loadTrainingConfig(args.config)
+    device = resolveDevice(config.device)
 
-    dataDir = config.get("dataDir", "data/Plantvillage")
-    splitDir = config.get("splitDir", "data/splits")
-
+    # Validate or prepare splits
     requiredSplits = ["train.csv", "val.csv", "test.csv", "classes.csv"]
-    hasAllSplits = all((Path(splitDir) / f).exists() for f in requiredSplits)
+    hasAllSplits = all((Path(config.splitDir) / f).exists() for f in requiredSplits)
 
     if not hasAllSplits:
-        print(f"[INFO] Missing or incomplete split files in '{splitDir}'. Auto-generating splits...")
-        splitConfig = SplitConfig()
-        createSplits(dataDir=dataDir, outDir=splitDir, splitConfig=splitConfig)
+        print(f"[INFO] Missing or incomplete split files in '{config.splitDir}'. Auto-generating splits...")
+        createSplits(dataDir=config.dataDir, outDir=config.splitDir, splitConfig=SplitConfig())
         print("[INFO] Split generation completed.")
     else:
-        print(f"[INFO] Found existing split files in '{splitDir}'.")
+        print(f"[INFO] Found existing split files in '{config.splitDir}'.")
 
+    # Build Dataloaders
     loaders, classToId = buildDataLoaders(
-        dataDir=dataDir,
-        splitDir=splitDir,
-        inputSize=config.get("imageSize", 224),
-        batchSize=config.get("batchSize", 32),
-        numWorkers=config.get("numWorkers", 2),
+        dataDir=config.dataDir,
+        splitDir=config.splitDir,
+        inputSize=config.imageSize,
+        batchSize=config.batchSize,
+        numWorkers=config.numWorkers,
     )
-
-    trainLoader = loaders["train"]
-    valLoader = loaders["val"]
-
+    
     idToClass = {v: k for k, v in classToId.items()}
     classNames = [idToClass[i] for i in range(len(classToId))]
     numClasses = len(classNames)
-    
-    modelName = config.get("modelName", "mobilenetV2")
-    freezeBackbone = config.get("freezeBackbone", False)
 
+    # Build Model
     model = buildModel(
-        modelName=modelName,
+        modelName=config.modelName,
         numClasses=numClasses,
         usePretrained=True,
-        freezeBackbone=freezeBackbone,
+        freezeBackbone=config.freezeBackbone,
     ).to(device)
 
     totalParams, trainableParams = countParameters(model)
-    trainableRatio = (trainableParams / totalParams) if totalParams > 0 else 0.0
+    print(f"[INFO] Model: {config.modelName} | Freeze Backbone: {config.freezeBackbone}")
+    print(f"[INFO] Params: {totalParams:,} (Total) | {trainableParams:,} (Trainable)")
 
-    print(f"[INFO] Model: {modelName} | Freeze Backbone: {freezeBackbone}")
-    print(f"[INFO] Params: {totalParams:,} (Total) | {trainableParams:,} (Trainable) | {trainableRatio:.1%} Ratio")
-
+    # Loss and Optimizer
     criterion = nn.CrossEntropyLoss()
-
     trainableModelParams = [param for param in model.parameters() if param.requires_grad]
-    if len(trainableModelParams) == 0:
-        raise RuntimeError("No trainable parameters found. Check freezeBackbone logic.")
-
+    
     optimizer = torch.optim.Adam(
         trainableModelParams,
-        lr=config.get("learningRate", 1e-3),
-        weight_decay=config.get("weightDecay", 1e-4),
+        lr=config.learningRate,
+        weight_decay=config.weightDecay,
     )
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
 
-    scheduler = torch.optim.lr_scheduler.StepLR(
-        optimizer,
-        step_size=3,
-        gamma=0.1,
-    )
-
-    outputDirStr = config.get("outputDir", "artifacts/baseline")
-    
-    if args.useGdrive and isColabEnvironment():
-        driveRoot = mountGoogleDrive()
-        if driveRoot:
-            # Output will be redirected to Google Drive
-            gdrivePrefix = os.path.join(driveRoot, "MyDrive", "PlantDocAI_Outputs")
-            # Determine folder name instead of deep nesting
-            baseDirName = os.path.basename(outputDirStr.rstrip("/"))
-            if not baseDirName:
-                baseDirName = "runs"
-            outputDirStr = os.path.join(gdrivePrefix, baseDirName)
-            print(f"[INFO] useGdrive flag enabled. Redirecting output to: {outputDirStr}")
-
+    # Prepare logic isolation for output paths (Google Drive aware)
+    outputDirStr = setupColabOutput(config.outputDir, args.useGdrive)
     outputDir = Path(outputDirStr)
     outputDir.mkdir(parents=True, exist_ok=True)
 
-    # Save a copy of the actual runtime configuration
-    config["numClasses"] = numClasses
-    config["classNames"] = classNames
-    saveJson(str(outputDir / "config.json"), config)
+    # Prepare runtime config dictionary for saving
+    runtimeConfig = config.to_dict()
+    runtimeConfig["numClasses"] = numClasses
+    runtimeConfig["classNames"] = classNames
+    saveJson(str(outputDir / "config.json"), runtimeConfig)
 
-    topK = config.get("topK", 3)
-    numEpochs = config.get("numEpochs", 5)
-
+    # Build Trainer
     trainer = Trainer(
         model=model,
         device=device,
-        trainLoader=trainLoader,
-        valLoader=valLoader,
+        trainLoader=loaders["train"],
+        valLoader=loaders["val"],
         criterion=criterion,
         optimizer=optimizer,
         scheduler=scheduler,
         classNames=classNames,
         outputDir=str(outputDir),
-        topK=topK,
+        topK=config.topK,
         saveBestMetric="valTop1",
     )
 
+    # Handle Checkpoint Resume
     startEpoch = 1
     if args.resume:
         lastCheckpointPath = outputDir / "checkpoints" / "last.pt"
@@ -165,14 +135,13 @@ def main() -> None:
                 mapLocation=str(device)
             )
             startEpoch = checkpoint.get("epoch", 0) + 1
-            bestMetric = checkpoint.get("bestMetric", float("-inf"))
-            trainer.bestMetric = bestMetric
+            trainer.bestMetric = checkpoint.get("bestMetric", float("-inf"))
             print(f"[INFO] Restored state. Resuming from epoch {startEpoch}...")
         else:
-            print(f"[INFO] --resume flag is set but {lastCheckpointPath} not found. Starting from scratch.")
+            print(f"[INFO] --resume flag given but {lastCheckpointPath} not found. Starting fresh.")
 
-    trainer.fit(numEpochs=numEpochs, config=config, startEpoch=startEpoch)
-
+    # Start Training
+    trainer.fit(numEpochs=config.numEpochs, config=runtimeConfig, startEpoch=startEpoch)
 
 if __name__ == "__main__":
     main()

@@ -22,3 +22,21 @@ def mountGoogleDrive(targetPath: str = "/content/drive") -> str:
     else:
         print("[INFO] Not running in Google Colab. Skipping Drive mount.")
         return ""
+
+def setupColabOutput(outputDirStr: str, useGdrive: bool) -> str:
+    """
+    If running in Colab and requested, mount Drive and return a redirected output path.
+    Otherwise, returns the original output path.
+    """
+    import os
+    if useGdrive and isColabEnvironment():
+        driveRoot = mountGoogleDrive()
+        if driveRoot:
+            gdrivePrefix = os.path.join(driveRoot, "MyDrive", "PlantDocAI_Outputs")
+            baseDirName = os.path.basename(outputDirStr.rstrip("/"))
+            if not baseDirName:
+                baseDirName = "runs"
+            redirectedPath = os.path.join(gdrivePrefix, baseDirName)
+            print(f"[INFO] useGdrive flag enabled. Redirecting output to: {redirectedPath}")
+            return redirectedPath
+    return outputDirStr
