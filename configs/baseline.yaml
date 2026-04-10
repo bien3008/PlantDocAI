@@ -3,7 +3,7 @@ dataDir: "data/PlantVillage/train"
 splitDir: "data/splits"
 outputDir: "artifacts/mobilenetV2Baseline"
 
-modelName: "mobilenetV2"
+modelName: "mobilenetv2_100"
 imageSize: 224
 freezeBackbone: false
 
