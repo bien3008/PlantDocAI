@@ -10,13 +10,8 @@ from .plantVillageDataset import PlantVillageDataset
 from .dataSplit import loadSplitCsv
 from .dataTransforms import buildTransforms
 
-def _safeCollate(batch):
-    batch = [b for b in batch if b is not None]
-    if len(batch) == 0:
-        return None
-    return torch.utils.data.default_collate(batch)
-
 def buildDataLoaders(
+
     dataDir: str,
     splitDir: str,
     inputSize: int = 224,
@@ -43,19 +38,16 @@ def buildDataLoaders(
     trainLoader = DataLoader(
         trainDs, batch_size=batchSize, shuffle=True,
         num_workers=numWorkers, pin_memory=pinMemory,
-        collate_fn=_safeCollate,
         drop_last=False,
     )
     valLoader = DataLoader(
         valDs, batch_size=batchSize, shuffle=False,
         num_workers=numWorkers, pin_memory=pinMemory,
-        collate_fn=_safeCollate,
         drop_last=False,
     )
     testLoader = DataLoader(
         testDs, batch_size=batchSize, shuffle=False,
         num_workers=numWorkers, pin_memory=pinMemory,
-        collate_fn=_safeCollate,
         drop_last=False,
     )
 

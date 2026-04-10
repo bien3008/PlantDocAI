@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple, Any
+from typing import Callable, Dict, List, Optional, Tuple
 
 from PIL import Image
 
@@ -14,25 +14,30 @@ class SampleItem:
     imagePath: str
     labelId: int
 
-class PlantVillageDataset: 
-
+class PlantVillageDataset:
     def __init__(
         self,
         rootDir: str,
         samples: Optional[List[SampleItem]] = None,
         transform: Optional[Callable] = None,
         returnPath: bool = False,
-        autoResolveRoot: bool = True,
-        maxResolveDepth: int = 3,
     ) -> None:
-        self.originalRootDir = os.path.abspath(rootDir)
-        self.rootDir = self.originalRootDir
+        """
+        Args:
+            rootDir: The exact absolute or relative path to the dataset.
+                     If samples is None, this directory MUST directly contain class folders.
+            samples: Pre-defined list of SampleItems. Often loaded from a split CSV.
+            transform: Transformations to apply to the images.
+            returnPath: If True, returns (img, label, path).
+        """
+        self.rootDir = os.path.abspath(rootDir)
+        if not os.path.isdir(self.rootDir):
+            raise FileNotFoundError(f"Requested rootDir does not exist or is not a directory: {self.rootDir}")
+            
         self.transform = transform
         self.returnPath = returnPath
 
         if samples is None:
-            if autoResolveRoot:
-                self.rootDir = self._resolveDatasetRoot(self.originalRootDir, maxDepth=maxResolveDepth)
             self.classToId = self._scanClasses(self.rootDir)
             self.idToClass = {v: k for k, v in self.classToId.items()}
             self.samples = self._scanSamples(self.rootDir, self.classToId)
@@ -43,23 +48,28 @@ class PlantVillageDataset:
 
         if len(self.samples) == 0:
             raise ValueError(
-                f"No samples found. rootDir={self.rootDir}. Check dataset structure."
+                f"No samples found in rootDir='{self.rootDir}'. "
+                "Ensure that the path directly contains class folders with images."
             )
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.samples)
 
     def __getitem__(self, idx: int):
         item = self.samples[idx]
         imagePath = item.imagePath
+        
+        # Ensure path is absolute for deterministic loading
         if not os.path.isabs(imagePath):
             imagePath = os.path.join(self.rootDir, imagePath)
 
         try:
             with Image.open(imagePath) as img:
+                # Convert to RGB to ensure 3 channels
                 img = img.convert("RGB")
-        except Exception:
-            return None
+        except Exception as e:
+            # Fail fast if image is corrupted or missing
+            raise RuntimeError(f"Failed to load image at {imagePath}. Error: {e}")
 
         if self.transform is not None:
             img = self.transform(img)
@@ -69,86 +79,7 @@ class PlantVillageDataset:
         return img, item.labelId
 
     @staticmethod
-    def _isClassFolder(dirPath: str):
-        if not os.path.isdir(dirPath):
-            return False
-        for dp, _, fns in os.walk(dirPath):
-            for fn in fns:
-                if fn.lower().endswith(IMG_EXTS):
-                    return True
-        return False
-
-    @classmethod
-    def _looksLikeClassLevel(cls, rootDir: str, minClasses: int = 2):
-        if not os.path.isdir(rootDir):
-            return False
-        subDirs = []
-        for name in os.listdir(rootDir):
-            full = os.path.join(rootDir, name)
-            if os.path.isdir(full) and not name.startswith("."):
-                subDirs.append(full)
-
-        classLike = 0
-        for d in subDirs:
-            if cls._isClassFolder(d):
-                classLike += 1
-        return classLike >= minClasses
-
-    @classmethod
-    def _resolveDatasetRoot(cls, startDir: str, maxDepth: int = 3):
-        startDir = os.path.abspath(startDir)
-        if not os.path.isdir(startDir):
-            raise FileNotFoundError(f"Dataset rootDir not found: {startDir}")
-
-        if cls._looksLikeClassLevel(startDir):
-            return startDir
-
-        queue = [(startDir, 0)]
-        candidates = []
-
-        while queue:
-            cur, depth = queue.pop(0)
-            if depth >= maxDepth:
-                continue
-
-            try:
-                names = os.listdir(cur)
-            except Exception:
-                continue
-
-            for name in names:
-                full = os.path.join(cur, name)
-                if os.path.isdir(full) and not name.startswith("."):
-                    if cls._looksLikeClassLevel(full):
-                        candidates.append(full)
-                    queue.append((full, depth + 1))
-
-        if candidates:
-            def score(path: str):
-                cnt = 0
-                for name in os.listdir(path):
-                    full = os.path.join(path, name)
-                    if os.path.isdir(full) and cls._isClassFolder(full):
-                        cnt += 1
-                return cnt
-
-            candidates.sort(key=score, reverse=True)
-            return candidates[0]
-
-        topEntries = []
-        try:
-            topEntries = os.listdir(startDir)[:20]
-        except Exception:
-            pass
-        raise ValueError(
-            "No class folders found under: "
-            f"{startDir}\n"
-            f"Top entries: {topEntries}\n"
-            "Hint: point --dataDir to the folder that directly contains class folders, e.g. .../color/"
-        )
-
-    @staticmethod
-    def _scanClasses(rootDir: str):
+    def _scanClasses(rootDir: str) -> Dict[str, int]:
         classNames = []
         for name in os.listdir(rootDir):
             full = os.path.join(rootDir, name)
@@ -157,12 +88,12 @@ class PlantVillageDataset:
 
         classNames.sort()
         if len(classNames) == 0:
-            raise ValueError(f"No class folders found under: {rootDir}")
+            raise ValueError(f"No class folders found directly under: {rootDir}")
 
         return {c: i for i, c in enumerate(classNames)}
 
     @staticmethod
-    def _scanSamples(rootDir: str, classToId: Dict[str, int]):
+    def _scanSamples(rootDir: str, classToId: Dict[str, int]) -> List[SampleItem]:
         samples: List[SampleItem] = []
         for className, labelId in classToId.items():
             classDir = os.path.join(rootDir, className)
