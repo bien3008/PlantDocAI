@@ -71,13 +71,18 @@ def main():
     
     # 2. Build Model and load Checkpoint
     modelName = config.get("modelName", "mobilenetv2_100")
-    logging.info(f"Building model '{modelName}' with {numClasses} classes...")
-    model = buildModel(
-        modelName=modelName,
-        numClasses=numClasses,
-        usePretrained=False,
-        freezeBackbone=False
-    ).to(device)
+    if modelName == "mobilenetV2":
+        import torchvision.models as models
+        logging.info(f"Building legacy torchvision model 'mobilenet_v2' with {numClasses} classes...")
+        model = models.mobilenet_v2(pretrained=False, num_classes=numClasses).to(device)
+    else:
+        logging.info(f"Building model '{modelName}' with {numClasses} classes using timm...")
+        model = buildModel(
+            modelName=modelName,
+            numClasses=numClasses,
+            usePretrained=False,
+            freezeBackbone=False
+        ).to(device)
     
     weightsPath = None
     for p in ["checkpoints/best.pt", "best.pt", "checkpoints/last.pt"]:
