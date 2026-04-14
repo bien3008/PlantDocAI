@@ -12,3 +12,6 @@ tqdm
 
 # Optional but common for datasets/logging in projects
 pandas
+scikit-learn
+matplotlib
+seaborn
