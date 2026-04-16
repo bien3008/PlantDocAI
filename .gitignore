@@ -7,7 +7,9 @@ __pycache__/
 *.so
 artifacts
 checkpoints
-
+ 
+data/baseline
+data/extended
 docs/TODO.md
 .vscode
 # Distribution / packaging
