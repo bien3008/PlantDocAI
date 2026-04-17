@@ -66,6 +66,7 @@ def main() -> None:
         inputSize=config.imageSize,
         batchSize=config.batchSize,
         numWorkers=config.numWorkers,
+        aug=config.augConfig,
     )
     
     idToClass = {v: k for k, v in classToId.items()}

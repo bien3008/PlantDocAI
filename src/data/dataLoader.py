@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 
 from .plantVillageDataset import PlantVillageDataset
 from .dataSplit import loadSplitCsv
-from .dataTransforms import buildTransforms
+from .dataTransforms import buildTransforms, AugConfig
 
 def buildDataLoaders(
 
@@ -19,9 +19,10 @@ def buildDataLoaders(
     numWorkers: int = 2,
     pinMemory: Optional[bool] = None,
     returnPath: bool = False,
+    aug: Optional[AugConfig] = None,
 ):
 
-    tf = buildTransforms(inputSize=inputSize)
+    tf = buildTransforms(inputSize=inputSize, aug=aug)
 
     trainSamples = loadSplitCsv(f"{splitDir}/train.csv")
     valSamples = loadSplitCsv(f"{splitDir}/val.csv")

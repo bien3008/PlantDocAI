@@ -1,7 +1,9 @@
 import yaml
 from pathlib import Path
-from dataclasses import dataclass
-from typing import Any, Dict
+from dataclasses import dataclass, field
+from typing import Any, Dict, Optional
+
+from src.data.dataTransforms import AugConfig
 
 @dataclass
 class TrainingConfig:
@@ -19,15 +21,29 @@ class TrainingConfig:
     numWorkers: int = 2
     topK: int = 3
     device: str = "auto"
+    augConfig: AugConfig = field(default_factory=AugConfig)
     
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "TrainingConfig":
         valid_keys = {f for f in cls.__dataclass_fields__}
-        filtered_dict = {k: v for k, v in d.items() if k in valid_keys}
+        filtered_dict = {k: v for k, v in d.items() if k in valid_keys and k != "augConfig"}
+
+        # Parse nested `augmentation:` block from YAML into AugConfig
+        aug_raw = d.get("augmentation", {})
+        if isinstance(aug_raw, dict):
+            aug_fields = {f for f in AugConfig.__dataclass_fields__}
+            aug_filtered = {k: v for k, v in aug_raw.items() if k in aug_fields}
+            filtered_dict["augConfig"] = AugConfig(**aug_filtered)
+        else:
+            filtered_dict["augConfig"] = AugConfig()
+
         return cls(**filtered_dict)
     
     def to_dict(self) -> Dict[str, Any]:
-        return {k: getattr(self, k) for k in self.__dataclass_fields__}
+        result = {k: getattr(self, k) for k in self.__dataclass_fields__ if k != "augConfig"}
+        # Serialise AugConfig as a nested dict under 'augmentation'
+        result["augmentation"] = {k: getattr(self.augConfig, k) for k in self.augConfig.__dataclass_fields__}
+        return result
 
 def loadYamlConfig(configPath: str) -> dict:
     """Load a YAML configuration file as raw dictionary."""
