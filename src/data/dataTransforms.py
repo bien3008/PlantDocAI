@@ -68,7 +68,7 @@ class AugConfig:
     Ghi đè qua configs/baseline.yaml → augmentation: {...}
     """
 
-    # ── Hình học ──────────────────────────────────────────────────────────────
+    # ── Hình họbc ──────────────────────────────────────────────────────────────
     # Xoay đầy đủ 180° vì hướng lá ngẫu nhiên trong ảnh thực địa.
     rotationDegrees: int = 180
 
@@ -228,8 +228,7 @@ def _buildAlbumentationsTrain(inputSize: int, aug: AugConfig):
 
     albu_ops = [
         A.RandomResizedCrop(
-            height=inputSize,
-            width=inputSize,
+            size=(inputSize, inputSize),
             scale=(aug.cropScaleMin, aug.cropScaleMax),
             ratio=(0.85, 1.18),
         ),
