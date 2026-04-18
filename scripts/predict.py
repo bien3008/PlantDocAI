@@ -31,11 +31,12 @@ def main():
         print(f"[ERROR] Prediction failed: {e}")
         sys.exit(1)
 
-    print("\n--- KẾT QUẢ DỰ ĐOÁN ---")
+    print("\n--- PREDICTION RESULTS ---")
     for i, result in enumerate(results):
+        classId = result["classId"]
         className = result["className"]
-        prob = result["probability"]
-        print(f"{i+1}. {className}: {prob * 100:.2f}%")
+        confidence = result["confidence"]
+        print(f"{i+1}. [{classId:>2d}] {className}: {confidence * 100:.2f}%")
 
 if __name__ == "__main__":
     main()

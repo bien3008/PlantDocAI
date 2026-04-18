@@ -297,6 +297,28 @@ def _buildAlbumentationsTrain(inputSize: int, aug: AugConfig):
     return _AlbuWrapper(pipeline)
 
 
+def buildInferenceTransform(inputSize: int = 224) -> transforms.Compose:
+    """
+    Build transform chuẩn cho inference / evaluation.
+    Khớp chính xác với eval pipeline dùng khi train (Resize 1.14× → CenterCrop).
+
+    Đây là single source of truth — cả buildTransforms() lẫn InferencePipeline
+    đều gọi hàm này để đảm bảo preprocessing nhất quán.
+
+    Args:
+        inputSize: Kích thước vuông đầu vào cho model (mặc định 224).
+
+    Returns:
+        transforms.Compose: Pipeline transform cho inference.
+    """
+    return transforms.Compose([
+        transforms.Resize(int(inputSize * 1.14)),
+        transforms.CenterCrop(inputSize),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+    ])
+
+
 def buildTransforms(
     inputSize: int = 224,
     aug: Optional[AugConfig] = None,
@@ -321,13 +343,7 @@ def buildTransforms(
         trainTf = _buildTorchvisionTrain(inputSize, aug)
 
     # ── Transform eval (val + test) ───────────────────────────────────────────
-    # KHÔNG có augmentation khi đánh giá.  Chỉ dùng center-crop xác định.
-    # Resize 1.14× trước khi crop cung cấp biên ngữ cảnh không gian nhỏ.
-    evalTf = transforms.Compose([
-        transforms.Resize(int(inputSize * 1.14)),
-        transforms.CenterCrop(inputSize),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
-    ])
+    # Dùng chung buildInferenceTransform() để đảm bảo nhất quán với inference.
+    evalTf = buildInferenceTransform(inputSize)
 
     return {"train": trainTf, "val": evalTf, "test": evalTf}
