@@ -21,6 +21,18 @@ class TrainingConfig:
     numWorkers: int = 2
     topK: int = 3
     device: str = "auto"
+
+    # ── Class imbalance handling ──────────────────────────────────────────────
+    # useWeightedSampler: Bật WeightedRandomSampler cho train DataLoader.
+    # Oversample class thiểu số để mỗi epoch thấy phân bố đều hơn.
+    useWeightedSampler: bool = True
+
+    # useClassWeights: Bật class weights trong CrossEntropyLoss.
+    # Tăng loss weight cho class thiểu số.
+    # CẢNH BÁO: Dùng cả sampler + class weights có nguy cơ overcompensation.
+    # Khuyến nghị: bắt đầu với sampler only, chỉ bật nếu kết quả chưa đủ.
+    useClassWeights: bool = False
+
     augConfig: AugConfig = field(default_factory=AugConfig)
     
     @classmethod

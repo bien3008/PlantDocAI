@@ -9,6 +9,7 @@ artifacts
 checkpoints
  
 data
+imageTest
 docs/TODO.md
 .vscode
 # Distribution / packaging

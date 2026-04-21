@@ -20,6 +20,15 @@ topK: 3
 device: "auto"
 
 # ─────────────────────────────────────────────────────────────────
+# Class imbalance handling
+# ─────────────────────────────────────────────────────────────────
+# Dùng WeightedRandomSampler cho train DataLoader để oversample class thiểu số.
+useWeightedSampler: true
+
+# Có thể bật thêm class weights cho CrossEntropyLoss (thường thì dùng sampler là đủ)
+useClassWeights: false
+
+# ─────────────────────────────────────────────────────────────────
 # Cấu hình Augmentation
 # Tất cả giá trị ánh xạ trực tiếp tới các trường AugConfig
 # trong src/data/dataTransforms.py
@@ -82,3 +91,17 @@ augmentation:
   eraseScaleMax: 0.08   # tối đa 8% diện tích ảnh — vẫn còn nhỏ
   eraseRatio: 1.0       # chỉ patch vuông (dự đoán được)
   eraseP: 0.20
+  
+  # ── Anti background shortcuts ──────────────────────────────────
+  coarseDropoutEnabled: true
+  coarseDropoutMaxHoles: 6
+  coarseDropoutHoleHeight: 16
+  coarseDropoutHoleWidth: 16
+  coarseDropoutP: 0.30
+  
+  gaussNoiseEnabled: true
+  gaussNoiseVarMin: 5.0
+  gaussNoiseVarMax: 25.0
+  gaussNoiseP: 0.25
+  
+  grayscaleP: 0.05

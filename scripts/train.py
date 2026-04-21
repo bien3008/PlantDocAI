@@ -67,6 +67,7 @@ def main() -> None:
         batchSize=config.batchSize,
         numWorkers=config.numWorkers,
         aug=config.augConfig,
+        useWeightedSampler=config.useWeightedSampler,
     )
     
     idToClass = {v: k for k, v in classToId.items()}
@@ -86,7 +87,22 @@ def main() -> None:
     print(f"[INFO] Params: {totalParams:,} (Total) | {trainableParams:,} (Trainable)")
 
     # Loss and Optimizer
-    criterion = nn.CrossEntropyLoss()
+    if config.useClassWeights:
+        from collections import Counter
+        from src.data.dataSplit import loadSplitCsv
+        
+        trainSamples = loadSplitCsv(f"{config.splitDir}/train.csv")
+        labelCounts = Counter(s.labelId for s in trainSamples)
+        total = sum(labelCounts.values())
+        
+        # Calculate inverse frequency weights to balance classes
+        weights = [total / (numClasses * labelCounts[i]) for i in range(numClasses)]
+        classWeightsTensor = torch.tensor(weights, dtype=torch.float32).to(device)
+        criterion = nn.CrossEntropyLoss(weight=classWeightsTensor)
+        print(f"[INFO] CrossEntropyLoss uses calculated class weights.")
+    else:
+        criterion = nn.CrossEntropyLoss()
+        
     trainableModelParams = [param for param in model.parameters() if param.requires_grad]
     
     optimizer = torch.optim.Adam(

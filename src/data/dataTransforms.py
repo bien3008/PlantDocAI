@@ -33,6 +33,15 @@ Giải thích từng quyết định thiết kế:
 9. RandomErasing vùng nhỏ — xác suất thấp xóa patch nhỏ với giá trị fill trung tính (grey)
    giúp tránh model ghi nhớ texture nền cụ thể mà không xóa tổn thương trên vùng foreground
    (patch rất nhỏ: 2–10% diện tích ảnh).
+
+10. CoarseDropout (nhiều patch nhỏ) — phá texture nền đồng nhất hiệu quả hơn 1 patch
+    RandomErasing. Nhiều lỗ nhỏ phân bố đều buộc model không ghi nhớ vùng nền cụ thể.
+
+11. GaussNoise — thêm nhiễu Gaussian vào pixel, phá vỡ sự đồng nhất pixel-level của
+    nền sạch (xám / trắng), buộc model tập trung vào structural features thay vì pixel values.
+
+12. RandomGrayscale — xác suất rất thấp (5%) chuyển ảnh sang grayscale.  Buộc model học
+    cả shape/texture, không chỉ dựa vào màu nền.  Giữ thấp vì màu bệnh là tín hiệu quan trọng.
 """
 
 from __future__ import annotations
@@ -128,6 +137,31 @@ class AugConfig:
     sharpnessFactor: float = 1.5   # >1 = sắc hơn; 1.0 = không thay đổi
     sharpnessP: float = 0.20
 
+    # ── CoarseDropout (nhiều patch nhỏ — chống shortcut nền) ─────────────────
+    # Xóa nhiều patch nhỏ phân bố đều trên ảnh thay vì 1 patch lớn.
+    # Hiệu quả hơn RandomErasing đơn lẻ trong việc phá texture nền đồng nhất.
+    # Kích thước patch nhỏ (16×16 trên ảnh 224×224 ≈ 0.5% diện tích/hole)
+    # đảm bảo không che khuất toàn bộ tổn thương.
+    coarseDropoutEnabled: bool = True
+    coarseDropoutMaxHoles: int = 6
+    coarseDropoutHoleHeight: int = 16
+    coarseDropoutHoleWidth: int = 16
+    coarseDropoutP: float = 0.30
+
+    # ── Gaussian Noise (phá nền sạch) ────────────────────────────────────────
+    # Thêm nhiễu Gaussian vào pixel — phá vỡ sự đồng nhất pixel-level của
+    # nền sạch (xám / trắng) trong PlantVillage.
+    # varLimit thấp (5–25) để không phá hủy texture vi mô của tổn thương.
+    gaussNoiseEnabled: bool = True
+    gaussNoiseVarMin: float = 5.0
+    gaussNoiseVarMax: float = 25.0
+    gaussNoiseP: float = 0.25
+
+    # ── Random Grayscale (buộc học shape thay vì chỉ dựa màu nền) ────────────
+    # Xác suất rất thấp (5%) để không mất tín hiệu màu bệnh quan trọng.
+    # Mục đích: buộc model học cả contour/shape, không chỉ dựa vào color channel.
+    grayscaleP: float = 0.05
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Hàm hỗ trợ công khai — được gọi bởi buildTransforms()
@@ -196,6 +230,10 @@ def _buildTorchvisionTrain(inputSize: int, aug: AugConfig) -> transforms.Compose
             )
         )
 
+    # ── RandomGrayscale (buộc model học shape, không chỉ dựa color) ───────
+    if aug.grayscaleP > 0:
+        ops.append(transforms.RandomGrayscale(p=aug.grayscaleP))
+
     ops += [
         transforms.ToTensor(),
         transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
@@ -213,6 +251,25 @@ def _buildTorchvisionTrain(inputSize: int, aug: AugConfig) -> transforms.Compose
                 inplace=False,
             )
         )
+
+    # ── Gaussian Noise fallback (torchvision) ─────────────────────────────
+    # Torchvision không có GaussNoise native → custom transform trên tensor.
+    if aug.gaussNoiseEnabled:
+        ops.append(_TorchGaussianNoise(
+            var_min=aug.gaussNoiseVarMin,
+            var_max=aug.gaussNoiseVarMax,
+            p=aug.gaussNoiseP,
+        ))
+
+    # ── CoarseDropout fallback (torchvision) ──────────────────────────────
+    # Torchvision không có CoarseDropout → custom transform nhiều lỗ nhỏ trên tensor.
+    if aug.coarseDropoutEnabled:
+        ops.append(_TorchCoarseDropout(
+            max_holes=aug.coarseDropoutMaxHoles,
+            hole_height=aug.coarseDropoutHoleHeight,
+            hole_width=aug.coarseDropoutHoleWidth,
+            p=aug.coarseDropoutP,
+        ))
 
     return transforms.Compose(ops)
 
@@ -267,6 +324,31 @@ def _buildAlbumentationsTrain(inputSize: int, aug: AugConfig):
             )
         )
 
+    # ── GaussNoise (phá nền sạch — trước normalize) ──────────────────────
+    if aug.gaussNoiseEnabled:
+        albu_ops.append(
+            A.GaussNoise(
+                var_limit=(aug.gaussNoiseVarMin, aug.gaussNoiseVarMax),
+                p=aug.gaussNoiseP,
+            )
+        )
+
+    # ── CoarseDropout (nhiều patch nhỏ — chống shortcut nền) ─────────────
+    if aug.coarseDropoutEnabled:
+        albu_ops.append(
+            A.CoarseDropout(
+                max_holes=aug.coarseDropoutMaxHoles,
+                max_height=aug.coarseDropoutHoleHeight,
+                max_width=aug.coarseDropoutHoleWidth,
+                fill_value=128,   # xám trung tính (trước normalize)
+                p=aug.coarseDropoutP,
+            )
+        )
+
+    # ── RandomGrayscale (buộc model học shape) ───────────────────────────
+    if aug.grayscaleP > 0:
+        albu_ops.append(A.ToGray(p=aug.grayscaleP))
+
     albu_ops += [
         A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
         ToTensorV2(),
@@ -295,6 +377,60 @@ def _buildAlbumentationsTrain(inputSize: int, aug: AugConfig):
             return result
 
     return _AlbuWrapper(pipeline)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Custom torchvision-only transforms (fallback khi không có albumentations)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class _TorchGaussianNoise:
+    """
+    Thêm nhiễu Gaussian vào tensor (SAU normalize).
+    Fallback cho albumentations GaussNoise khi chỉ dùng torchvision.
+    """
+
+    def __init__(self, var_min: float = 5.0, var_max: float = 25.0, p: float = 0.25):
+        # var_limit từ albumentations là variance trên ảnh uint8 (0-255).
+        # Sau normalize ImageNet, cần scale tương ứng: std = sqrt(var) / 255.
+        self.std_min = (var_min ** 0.5) / 255.0
+        self.std_max = (var_max ** 0.5) / 255.0
+        self.p = p
+
+    def __call__(self, tensor: torch.Tensor) -> torch.Tensor:
+        if torch.rand(1).item() > self.p:
+            return tensor
+        std = self.std_min + torch.rand(1).item() * (self.std_max - self.std_min)
+        noise = torch.randn_like(tensor) * std
+        return tensor + noise
+
+
+class _TorchCoarseDropout:
+    """
+    Xóa nhiều patch nhỏ ngẫu nhiên trên tensor (SAU normalize).
+    Fallback cho albumentations CoarseDropout khi chỉ dùng torchvision.
+    Fill value = 0 (sau normalize theo ImageNet mean = xám trung tính).
+    """
+
+    def __init__(self, max_holes: int = 6, hole_height: int = 16,
+                 hole_width: int = 16, p: float = 0.30):
+        self.max_holes = max_holes
+        self.hole_height = hole_height
+        self.hole_width = hole_width
+        self.p = p
+
+    def __call__(self, tensor: torch.Tensor) -> torch.Tensor:
+        if torch.rand(1).item() > self.p:
+            return tensor
+        _, h, w = tensor.shape
+        n_holes = torch.randint(1, self.max_holes + 1, (1,)).item()
+        tensor = tensor.clone()
+        for _ in range(n_holes):
+            y = torch.randint(0, max(1, h - self.hole_height), (1,)).item()
+            x = torch.randint(0, max(1, w - self.hole_width), (1,)).item()
+            y2 = min(y + self.hole_height, h)
+            x2 = min(x + self.hole_width, w)
+            tensor[:, y:y2, x:x2] = 0  # 0 sau normalize = xám trung tính
+        return tensor
 
 
 def buildInferenceTransform(inputSize: int = 224) -> transforms.Compose:
