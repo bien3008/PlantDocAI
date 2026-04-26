@@ -8,7 +8,7 @@ __pycache__/
 artifacts
 checkpoints
  
-data
+/data/
 imageTest
 docs/TODO.md
 .vscode
