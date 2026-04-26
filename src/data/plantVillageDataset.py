@@ -80,25 +80,28 @@ class PlantVillageDataset:
 
     @staticmethod
     def _scanClasses(rootDir: str) -> Dict[str, int]:
-        classNames = []
-        for name in os.listdir(rootDir):
-            full = os.path.join(rootDir, name)
-            if os.path.isdir(full) and not name.startswith("."):
-                classNames.append(name)
+        classNames = set()
+        for dirpath, _, files in os.walk(rootDir):
+            hasImg = any(f.lower().endswith(IMG_EXTS) for f in files)
+            if hasImg:
+                className = os.path.basename(dirpath)
+                if not className.startswith(".") and "___" in className:
+                    classNames.add(className)
 
-        classNames.sort()
+        classNames = sorted(list(classNames))
         if len(classNames) == 0:
-            raise ValueError(f"No class folders found directly under: {rootDir}")
+            raise ValueError(f"No valid class folders (containing '___') with images found under: {rootDir}")
 
         return {c: i for i, c in enumerate(classNames)}
 
     @staticmethod
     def _scanSamples(rootDir: str, classToId: Dict[str, int]) -> List[SampleItem]:
         samples: List[SampleItem] = []
-        for className, labelId in classToId.items():
-            classDir = os.path.join(rootDir, className)
-            for dirpath, _, filenames in os.walk(classDir):
-                for fn in filenames:
+        for dirpath, _, files in os.walk(rootDir):
+            className = os.path.basename(dirpath)
+            if className in classToId:
+                labelId = classToId[className]
+                for fn in files:
                     if fn.lower().endswith(IMG_EXTS):
                         fullPath = os.path.join(dirpath, fn)
                         relPath = os.path.relpath(fullPath, rootDir)
