@@ -12,6 +12,7 @@ Thiết kế:
   - Tái sử dụng buildInferenceTransform() từ dataTransforms (single source of truth)
   - Class names đọc từ config.json artifact (được tạo khi train)
   - Output chuẩn hóa: classId, className, confidence (post-softmax)
+  - Tích hợp Grad-CAM tùy chọn: sinh heatmap overlay qua explain() / explainFromPil()
 """
 
 import json
@@ -233,3 +234,101 @@ class InferencePipeline:
             Dict: ``{classId, className, confidence}``
         """
         return self.predict(imagePath, topK=1)[0]
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Explainability API (Grad-CAM)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def explainFromPil(
+        self,
+        image: Image.Image,
+        topK: int = 3,
+        class_idx: Optional[int] = None,
+        alpha: float = 0.5,
+    ) -> Dict[str, Union[List, Image.Image, int]]:
+        """
+        Predict + sinh Grad-CAM overlay trên PIL Image.
+
+        Quy trình:
+        1. Preprocess ảnh bằng cùng transform với predict (single source of truth).
+        2. Chạy Grad-CAM trên preprocessed tensor → heatmap.
+        3. Overlay heatmap lên ảnh gốc → PIL.Image sẵn sàng cho Streamlit.
+        4. Chạy predict bình thường để lấy top-k results.
+
+        Args:
+            image: PIL Image gốc (chưa preprocess).
+            topK: Số lượng top-k predictions.
+            class_idx: Index class cần giải thích. Nếu None, dùng predicted class (argmax).
+            alpha: Độ đậm của heatmap overlay (0.0–1.0).
+
+        Returns:
+            Dict gồm:
+              - ``predictions``: List[Dict] top-k predictions (giống predictFromPil).
+              - ``gradcamOverlay``: PIL.Image overlay heatmap lên ảnh gốc.
+              - ``targetClassIdx``: int — class index được dùng để sinh heatmap.
+
+        Note:
+            Grad-CAM hooks được tạo và hủy mỗi lần gọi để tránh memory leak
+            khi chạy nhiều lần trong Streamlit app.
+        """
+        from src.explain.gradcam import GradCAM
+
+        # Đảm bảo RGB
+        image = image.convert("RGB")
+
+        # Preprocess bằng cùng transform với inference — single source of truth
+        input_tensor = self.transform(image).unsqueeze(0).to(self.device)
+
+        # Sinh Grad-CAM (hooks tạo + hủy tự động qua context manager)
+        with GradCAM(self.model, model_name=self.modelName, device=self.device) as cam:
+            heatmap = cam.generate(input_tensor, class_idx=class_idx)
+            target_idx = class_idx if class_idx is not None else input_tensor.new_tensor(0).long().item()
+
+            # Xác định target class index thực tế (argmax nếu chưa chỉ định)
+            if class_idx is None:
+                with torch.no_grad():
+                    logits = self.model(input_tensor)
+                    target_idx = logits.argmax(dim=1).item()
+            else:
+                target_idx = class_idx
+
+            overlay = cam.overlay_on_image(image, heatmap, alpha=alpha)
+
+        # Model trở lại eval mode ổn định — predict bình thường
+        self.model.eval()
+        predictions = self.predictFromPil(image, topK=topK)
+
+        return {
+            "predictions": predictions,
+            "gradcamOverlay": overlay,
+            "targetClassIdx": target_idx,
+        }
+
+    def explain(
+        self,
+        imagePath: Union[str, Path],
+        topK: int = 3,
+        class_idx: Optional[int] = None,
+        alpha: float = 0.5,
+    ) -> Dict[str, Union[List, Image.Image, int]]:
+        """
+        Predict + sinh Grad-CAM overlay từ đường dẫn file ảnh.
+
+        Args:
+            imagePath: Đường dẫn tới file ảnh.
+            topK: Số lượng top-k predictions.
+            class_idx: Index class cần giải thích (None = predicted class).
+            alpha: Độ đậm overlay.
+
+        Returns:
+            Dict: Xem ``explainFromPil()``.
+        """
+        try:
+            with Image.open(imagePath) as img:
+                img = img.copy()
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to load image for explanation at {imagePath}. Error: {e}"
+            )
+
+        return self.explainFromPil(img, topK=topK, class_idx=class_idx, alpha=alpha)
