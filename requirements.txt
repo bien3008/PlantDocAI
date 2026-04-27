@@ -15,3 +15,6 @@ pandas
 scikit-learn
 matplotlib
 seaborn
+
+# Demo app
+streamlit
