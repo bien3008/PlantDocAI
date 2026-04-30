@@ -21,6 +21,12 @@ def parseArgs() -> argparse.Namespace:
     parser.add_argument("--config", type=str, default="configs/baseline.yaml", help="Path to YAML config file")
     parser.add_argument("--resume", action="store_true", help="Resume training from the last checkpoint if it exists")
     parser.add_argument("--useGdrive", action="store_true", help="Mount Google Drive and save artifacts there if running in Colab")
+    parser.add_argument(
+        "--pretrainedCheckpoint", type=str, default=None,
+        help="Path to a pretrained checkpoint (e.g., Stage 1 best.pt). "
+             "Loads model weights only (not optimizer/scheduler). "
+             "Overrides pretrainedCheckpoint in config YAML if both are set."
+    )
     return parser.parse_args()
 
 def resolveDevice(deviceArg: str) -> torch.device:
@@ -74,17 +80,42 @@ def main() -> None:
     classNames = [idToClass[i] for i in range(len(classToId))]
     numClasses = len(classNames)
 
+    # ── Resolve pretrained checkpoint (CLI > config > ImageNet) ─────────────
+    pretrainedCkpt = args.pretrainedCheckpoint or config.pretrainedCheckpoint
+    useImageNetPretrained = (pretrainedCkpt is None)  # dùng ImageNet chỉ khi không có checkpoint
+
     # Build Model
     model = buildModel(
         modelName=config.modelName,
         numClasses=numClasses,
-        usePretrained=True,
+        usePretrained=useImageNetPretrained,
         freezeBackbone=config.freezeBackbone,
     ).to(device)
+
+    # ── Load pretrained checkpoint nếu có (chỉ weights, KHÔNG load optimizer) ─
+    if pretrainedCkpt is not None:
+        ckptPath = Path(pretrainedCkpt)
+        if not ckptPath.exists():
+            print(f"[ERROR] Pretrained checkpoint not found: {ckptPath}")
+            sys.exit(1)
+        print(f"[INFO] Loading pretrained weights from: {ckptPath}")
+        ckptData = torch.load(str(ckptPath), map_location=str(device))
+        # Kiểm tra tương thích numClasses
+        ckptClassNames = ckptData.get("classNames", [])
+        if len(ckptClassNames) != numClasses:
+            print(f"[WARN] Checkpoint has {len(ckptClassNames)} classes, current model has {numClasses} classes.")
+            print(f"[WARN] Loading weights with strict=False (classifier head sẽ được init lại).")
+            # Load non-strict: bỏ qua classifier head nếu size không khớp
+            model.load_state_dict(ckptData["modelStateDict"], strict=False)
+        else:
+            model.load_state_dict(ckptData["modelStateDict"])
+        print(f"[INFO] Pretrained weights loaded successfully.")
 
     totalParams, trainableParams = countParameters(model)
     print(f"[INFO] Model: {config.modelName} | Freeze Backbone: {config.freezeBackbone}")
     print(f"[INFO] Params: {totalParams:,} (Total) | {trainableParams:,} (Trainable)")
+    if pretrainedCkpt:
+        print(f"[INFO] Pretrained from: {pretrainedCkpt} (NOT ImageNet)")
 
     # Loss and Optimizer
     if config.useClassWeights:

@@ -26,6 +26,14 @@ def parseArgs():
     parser.add_argument("--split", type=str, default="val", choices=["val", "test", "train"], help="Which dataset split to evaluate on")
     parser.add_argument("--batchSize", type=int, default=32, help="Batch size for evaluation")
     parser.add_argument("--saveMisclassified", action="store_true", help="Save misclassified images for debugging")
+    parser.add_argument(
+        "--dataDir", type=str, default=None,
+        help="Override dataDir from config.json (e.g., data/extended/PlantDoc_Dataset_master/test for cross-dataset eval)"
+    )
+    parser.add_argument(
+        "--splitDir", type=str, default=None,
+        help="Override splitDir from config.json (e.g., data/splits/two_stage/plantdoc_test)"
+    )
     return parser.parse_args()
 
 def main():
@@ -47,11 +55,18 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logging.info(f"Using device: {device}")
     
+    # Resolve dataDir and splitDir (CLI overrides config)
+    evalDataDir = args.dataDir or config.get("dataDir", "data/PlantVillage/train")
+    evalSplitDir = args.splitDir or config.get("splitDir", "data/splits")
+    
+    logging.info(f"Eval dataDir:  {evalDataDir}")
+    logging.info(f"Eval splitDir: {evalSplitDir}")
+    
     # 1. Build DataLoaders (requesting paths explicitly for misclassified tracking)
     logging.info(f"Building DataLoader for '{args.split}' split...")
     loaders, classToId = buildDataLoaders(
-        dataDir=config.get("dataDir", "data/PlantVillage/train"),
-        splitDir=config.get("splitDir", "data/splits"),
+        dataDir=evalDataDir,
+        splitDir=evalSplitDir,
         inputSize=config.get("imageSize", 224),
         batchSize=args.batchSize,
         numWorkers=config.get("numWorkers", 2),
