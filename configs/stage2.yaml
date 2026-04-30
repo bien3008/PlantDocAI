@@ -16,15 +16,16 @@ dataDir: "data/extended/PlantDoc_Dataset_master/train"
 splitDir: "data/splits/two_stage/stage2"
 outputDir: "artifacts/two_stage_s2"
 
-# Load trọng số Stage 1 thay vì ImageNet
-pretrainedCheckpoint: "artifacts/two_stage_s1/checkpoints/best.pt"
+# Đã loại bỏ Stage 1 theo kế hoạch chống Negative Transfer.
+# Mô hình sẽ load trọng số từ ImageNet để học trực tiếp trên PlantDoc.
+pretrainedCheckpoint: null
 
 modelName: "mobilenetv2_100"
 imageSize: 224
 
-# Freeze backbone ban đầu — chỉ fine-tune classifier head trên dữ liệu thực địa nhỏ.
-# Nếu muốn unfreeze dần, chạy thêm stage2 lần 2 với freezeBackbone: false và LR thấp hơn.
-freezeBackbone: true
+# Do học thẳng từ ImageNet (chưa quen với bệnh lá), chúng ta cần rã đông mạng
+# ngay từ đầu để nó học các đặc trưng mới, với LR = 1e-4.
+freezeBackbone: false
 
 # Thông số chuẩn hóa (ImageNet — giữ nguyên)
 mean: [0.485, 0.456, 0.406]
@@ -57,7 +58,7 @@ augmentation:
   brightnessJitter: 0.30
   contrastJitter: 0.25
   saturationJitter: 0.15
-  hueJitter: 0.00
+  hueJitter: 0.00  # KHÔNG ĐƯỢC THAY ĐỔI
   blurEnabled: true
   blurKernelMin: 3
   blurKernelMax: 5

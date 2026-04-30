@@ -58,8 +58,18 @@ try:
     from albumentations.pytorch import ToTensorV2
     import numpy as np
     _HAS_ALBUMENTATIONS = True
+    # Detect version 1.4.0+ which has breaking changes in GaussNoise and CoarseDropout
+    _ALBU_V14 = False
+    try:
+        v_parts = A.__version__.split('.')
+        if len(v_parts) >= 2:
+            major, minor = int(v_parts[0]), int(v_parts[1])
+            _ALBU_V14 = (major > 1) or (major == 1 and minor >= 4)
+    except:
+        pass
 except ImportError:
     _HAS_ALBUMENTATIONS = False
+    _ALBU_V14 = False
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Thống số chuẩn hóa ImageNet (dùng cho mọi model được pretrain trên ImageNet,
@@ -188,16 +198,14 @@ def _buildTorchvisionTrain(inputSize: int, aug: AugConfig) -> transforms.Compose
     ops.append(transforms.RandomRotation(degrees=aug.rotationDegrees))
 
     # hueJitter được truyền tường minh — mặc định là 0.0.
-    # Nếu người dùng đặt hueJitter != 0, sẽ phát cảnh báo runtime.
+    # Nếu người dùng đặt hueJitter != 0, sẽ phát runtime error để chặn việc học hỏng màu bệnh.
     if aug.hueJitter != 0.0:
-        import warnings
-        warnings.warn(
-            f"[AugConfig] hueJitter={aug.hueJitter} khác 0. "
-            "Màu sắc bệnh lá là tín hiệu chẩn đoán quan trọng — "
-            "thay đổi hue có thể tổng hợp ra mẫu không hợp lệ về y học. "
-            "Đặt hueJitter=0.0 trừ khi có lý do cụ thể từ domain.",
-            UserWarning,
-            stacklevel=2,
+        raise ValueError(
+            f"[LỖI NGHIÊM TRỌNG] hueJitter={aug.hueJitter} khác 0. "
+            "Màu sắc bệnh lá là tín hiệu chẩn đoán sinh học sống còn. "
+            "Thay đổi hue sẽ tạo ra các màu bệnh vô lý (ví dụ đốm nâu thành đốm tím), "
+            "làm nhiễu và phá hỏng khả năng phân loại của mô hình. "
+            "VUI LÒNG ĐẶT hueJitter: 0.0 TRONG CẤU HÌNH YAML."
         )
 
     ops.append(
@@ -326,24 +334,47 @@ def _buildAlbumentationsTrain(inputSize: int, aug: AugConfig):
 
     # ── GaussNoise (phá nền sạch — trước normalize) ──────────────────────
     if aug.gaussNoiseEnabled:
-        albu_ops.append(
-            A.GaussNoise(
-                var_limit=(aug.gaussNoiseVarMin, aug.gaussNoiseVarMax),
-                p=aug.gaussNoiseP,
+        if _ALBU_V14:
+            # Albumentations 1.4.0+ dùng std_range thay cho var_limit.
+            std_min = (aug.gaussNoiseVarMin ** 0.5) / 255.0
+            std_max = (aug.gaussNoiseVarMax ** 0.5) / 255.0
+            albu_ops.append(
+                A.GaussNoise(
+                    std_range=(std_min, std_max),
+                    p=aug.gaussNoiseP,
+                )
             )
-        )
+        else:
+            albu_ops.append(
+                A.GaussNoise(
+                    var_limit=(aug.gaussNoiseVarMin, aug.gaussNoiseVarMax),
+                    p=aug.gaussNoiseP,
+                )
+            )
 
     # ── CoarseDropout (nhiều patch nhỏ — chống shortcut nền) ─────────────
     if aug.coarseDropoutEnabled:
-        albu_ops.append(
-            A.CoarseDropout(
-                max_holes=aug.coarseDropoutMaxHoles,
-                max_height=aug.coarseDropoutHoleHeight,
-                max_width=aug.coarseDropoutHoleWidth,
-                fill_value=128,   # xám trung tính (trước normalize)
-                p=aug.coarseDropoutP,
+        if _ALBU_V14:
+            # Albumentations 1.4.0+ dùng num_holes_range, hole_height_range, hole_width_range.
+            albu_ops.append(
+                A.CoarseDropout(
+                    num_holes_range=(1, aug.coarseDropoutMaxHoles),
+                    hole_height_range=(aug.coarseDropoutHoleHeight // 2, aug.coarseDropoutHoleHeight),
+                    hole_width_range=(aug.coarseDropoutHoleWidth // 2, aug.coarseDropoutHoleWidth),
+                    fill=128,   # xám trung tính (trước normalize)
+                    p=aug.coarseDropoutP,
+                )
             )
-        )
+        else:
+            albu_ops.append(
+                A.CoarseDropout(
+                    max_holes=aug.coarseDropoutMaxHoles,
+                    max_height=aug.coarseDropoutHoleHeight,
+                    max_width=aug.coarseDropoutHoleWidth,
+                    fill_value=128,
+                    p=aug.coarseDropoutP,
+                )
+            )
 
     # ── RandomGrayscale (buộc model học shape) ───────────────────────────
     if aug.grayscaleP > 0:
