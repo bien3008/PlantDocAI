@@ -9,8 +9,8 @@ pillow
 # Utils
 numpy
 tqdm
-
-# Optional but common for datasets/logging in projects
+pyyaml
+albumentations
 pandas
 scikit-learn
 matplotlib
