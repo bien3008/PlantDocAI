@@ -1,0 +1,84 @@
+# ─────────────────────────────────────────────────────────────────
+# configs/stage2.yaml
+# Stage 2: Fine-tune trên PlantDoc (ảnh thực địa, core classes)
+#
+# Mục đích: Buộc mô hình "quên" nền lab đơn sắc của PlantVillage
+# và tập trung vào tổn thương thật sự trên ảnh chụp ngoài đời thực.
+#
+# Quan trọng:
+#   - Dùng pretrainedCheckpoint để load trọng số Stage 1
+#   - Learning rate thấp hơn (1e-4) để fine-tune nhẹ nhàng
+#   - freezeBackbone: true ban đầu, chỉ train classifier head
+# ─────────────────────────────────────────────────────────────────
+
+experimentName: "two_stage_s2"
+dataDir: "data/extended/PlantDoc_Dataset_master/train"
+splitDir: "data/splits/two_stage/stage2"
+outputDir: "artifacts/two_stage_s2"
+
+# Load trọng số Stage 1 thay vì ImageNet
+pretrainedCheckpoint: "artifacts/two_stage_s1/checkpoints/best.pt"
+
+modelName: "mobilenetv2_100"
+imageSize: 224
+
+# Freeze backbone ban đầu — chỉ fine-tune classifier head trên dữ liệu thực địa nhỏ.
+# Nếu muốn unfreeze dần, chạy thêm stage2 lần 2 với freezeBackbone: false và LR thấp hơn.
+freezeBackbone: true
+
+# Thông số chuẩn hóa (ImageNet — giữ nguyên)
+mean: [0.485, 0.456, 0.406]
+std: [0.229, 0.224, 0.225]
+
+batchSize: 16
+numEpochs: 20
+learningRate: 0.0001
+weightDecay: 0.0001
+numWorkers: 2
+topK: 3
+device: "auto"
+
+# ── Class imbalance ──────────────────────────────────────────────
+# PlantDoc nhỏ hơn PV nhiều, sampler rất cần thiết.
+useWeightedSampler: true
+useClassWeights: false
+
+# ── Augmentation (mạnh hơn Stage 1 — dữ liệu ít, cần diversity) ─
+augmentation:
+  rotationDegrees: 180
+  cropScaleMin: 0.65
+  cropScaleMax: 1.00
+  hflip: true
+  vflip: true
+  elasticEnabled: true
+  elasticAlpha: 30.0
+  elasticSigma: 5.0
+  elasticP: 0.35
+  brightnessJitter: 0.30
+  contrastJitter: 0.25
+  saturationJitter: 0.15
+  hueJitter: 0.00
+  blurEnabled: true
+  blurKernelMin: 3
+  blurKernelMax: 5
+  blurSigmaMin: 0.1
+  blurSigmaMax: 1.0
+  blurP: 0.25
+  sharpnessEnabled: true
+  sharpnessFactor: 1.5
+  sharpnessP: 0.25
+  eraseEnabled: true
+  eraseScaleMin: 0.02
+  eraseScaleMax: 0.10
+  eraseRatio: 1.0
+  eraseP: 0.25
+  coarseDropoutEnabled: true
+  coarseDropoutMaxHoles: 8
+  coarseDropoutHoleHeight: 16
+  coarseDropoutHoleWidth: 16
+  coarseDropoutP: 0.35
+  gaussNoiseEnabled: true
+  gaussNoiseVarMin: 5.0
+  gaussNoiseVarMax: 30.0
+  gaussNoiseP: 0.30
+  grayscaleP: 0.05
