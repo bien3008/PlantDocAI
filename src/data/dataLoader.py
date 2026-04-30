@@ -81,8 +81,19 @@ def buildDataLoaders(
         drop_last=False,
     )
 
-    scanDs = PlantVillageDataset(rootDir=dataDir, samples=None, transform=None)
-    classToId, _ = scanDs.getClassMapping()
+    # Prefer classes.csv from splitDir (authoritative for two-stage strategy)
+    # over scanning the filesystem (which may contain more classes than intended).
+    classesPath = f"{splitDir}/classes.csv"
+    import os, csv
+    if os.path.isfile(classesPath):
+        classToId = {}
+        with open(classesPath, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                classToId[row["className"]] = int(row["labelId"])
+    else:
+        scanDs = PlantVillageDataset(rootDir=dataDir, samples=None, transform=None)
+        classToId, _ = scanDs.getClassMapping()
 
     return {"train": trainLoader, "val": valLoader, "test": testLoader}, classToId
 

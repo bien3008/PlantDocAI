@@ -22,6 +22,12 @@ class TrainingConfig:
     topK: int = 3
     device: str = "auto"
 
+    # ── Two-stage training ────────────────────────────────────────────────────
+    # Đường dẫn tới checkpoint từ giai đoạn trước (VD: Stage 1 best.pt).
+    # Khi được set, train.py sẽ load modelStateDict từ file này thay vì
+    # dùng ImageNet weights mặc định. Chỉ load weights, KHÔNG load optimizer/scheduler.
+    pretrainedCheckpoint: Optional[str] = None
+
     # ── Class imbalance handling ──────────────────────────────────────────────
     # useWeightedSampler: Bật WeightedRandomSampler cho train DataLoader.
     # Oversample class thiểu số để mỗi epoch thấy phân bố đều hơn.
