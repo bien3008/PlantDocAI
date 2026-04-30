@@ -167,6 +167,8 @@ def main() -> None:
         outputDir=str(outputDir),
         topK=config.topK,
         saveBestMetric="valTop1",
+        earlyStoppingPatience=config.earlyStoppingPatience,
+        earlyStoppingMinDelta=config.earlyStoppingMinDelta,
     )
 
     # Handle Checkpoint Resume

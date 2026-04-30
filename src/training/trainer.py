@@ -24,6 +24,8 @@ class Trainer:
         outputDir: str,
         topK: int = 3,
         saveBestMetric: str = "valTop1",
+        earlyStoppingPatience: int = 0,
+        earlyStoppingMinDelta: float = 0.0,
     ):
         self.model = model
         self.device = device
@@ -36,6 +38,8 @@ class Trainer:
         self.outputDir = Path(outputDir)
         self.topK = topK
         self.saveBestMetric = saveBestMetric
+        self.earlyStoppingPatience = earlyStoppingPatience
+        self.earlyStoppingMinDelta = earlyStoppingMinDelta
 
         self.checkpointDir = self.outputDir / "checkpoints"
         self.logDir = self.outputDir / "logs"
@@ -44,6 +48,7 @@ class Trainer:
 
         self.csvLogPath = self.logDir / "trainMetrics.csv"
         self.bestMetric = float("-inf")
+        self.earlyStopCounter = 0
 
         self._initCsvLogger()
 
@@ -169,8 +174,9 @@ class Trainer:
             )
 
             metricValue = rowData[self.saveBestMetric]
-            if metricValue > self.bestMetric:
+            if metricValue > (self.bestMetric + self.earlyStoppingMinDelta):
                 self.bestMetric = metricValue
+                self.earlyStopCounter = 0  # reset counter on improvement
                 saveCheckpoint(
                     savePath=str(self.checkpointDir / "best.pt"),
                     model=self.model,
@@ -182,6 +188,22 @@ class Trainer:
                     config=config,
                 )
                 print(f"[INFO] Saved new best checkpoint: {self.checkpointDir / 'best.pt'}")
+            else:
+                self.earlyStopCounter += 1
+                if self.earlyStoppingPatience > 0 and self.earlyStopCounter >= self.earlyStoppingPatience:
+                    print(f"[INFO] Early stopping triggered after {epoch} epochs. No improvement for {self.earlyStopCounter} epochs.")
+                    # Vẫn lưu last.pt trước khi thoát
+                    saveCheckpoint(
+                        savePath=str(self.checkpointDir / "last.pt"),
+                        model=self.model,
+                        optimizer=self.optimizer,
+                        scheduler=self.scheduler,
+                        epoch=epoch,
+                        bestMetric=self.bestMetric,
+                        classNames=self.classNames,
+                        config=config,
+                    )
+                    break
 
             saveCheckpoint(
                 savePath=str(self.checkpointDir / "last.pt"),

@@ -39,6 +39,12 @@ class TrainingConfig:
     # Khuyến nghị: bắt đầu với sampler only, chỉ bật nếu kết quả chưa đủ.
     useClassWeights: bool = False
 
+    # ── Early Stopping ────────────────────────────────────────────────────────
+    # Dừng sớm nếu không có sự cải thiện trên valTop1 sau N epochs.
+    # Đặt 0 hoặc None để tắt.
+    earlyStoppingPatience: int = 5
+    earlyStoppingMinDelta: float = 0.001
+
     augConfig: AugConfig = field(default_factory=AugConfig)
     
     @classmethod
