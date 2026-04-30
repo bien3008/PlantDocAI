@@ -29,14 +29,25 @@ sys.path.insert(0, str(ROOT))
 from sklearn.model_selection import train_test_split
 from src.data.plantVillageDataset import IMG_EXTS, SampleItem
 
-# ── Đường dẫn ─────────────────────────────────────────────────────────────────
-PV_DIR = ROOT / "data" / "extended" / "plantVillage" / "train"
-PD_TRAIN_DIR = ROOT / "data" / "extended" / "PlantDoc_Dataset_master" / "train"
-PD_TEST_DIR = ROOT / "data" / "extended" / "PlantDoc_Dataset_master" / "test"
-CORE_CLASSES_CSV = ROOT / "data" / "splits" / "two_stage" / "core_classes.csv"
-OUTPUT_BASE = ROOT / "data" / "splits" / "two_stage"
+import argparse
+
+# ── Đường dẫn mặc định ────────────────────────────────────────────────────────
+DEFAULT_PV_DIR = str(ROOT / "data" / "extended" / "plantVillage" / "train")
+DEFAULT_PD_TRAIN_DIR = str(ROOT / "data" / "extended" / "PlantDoc_Dataset_master" / "train")
+DEFAULT_PD_TEST_DIR = str(ROOT / "data" / "extended" / "PlantDoc_Dataset_master" / "test")
+DEFAULT_CORE_CLASSES_CSV = str(ROOT / "data" / "splits" / "two_stage" / "core_classes.csv")
+DEFAULT_OUTPUT_BASE = str(ROOT / "data" / "splits" / "two_stage")
 
 SEED = 42
+
+def parseArgs() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Create splits for Two-Stage Training")
+    parser.add_argument("--pvDir", type=str, default=DEFAULT_PV_DIR, help="Path to PlantVillage training data")
+    parser.add_argument("--pdTrainDir", type=str, default=DEFAULT_PD_TRAIN_DIR, help="Path to PlantDoc training data")
+    parser.add_argument("--pdTestDir", type=str, default=DEFAULT_PD_TEST_DIR, help="Path to PlantDoc test data")
+    parser.add_argument("--coreClassesCsv", type=str, default=DEFAULT_CORE_CLASSES_CSV, help="Path to core_classes.csv")
+    parser.add_argument("--outBase", type=str, default=DEFAULT_OUTPUT_BASE, help="Base output directory for splits")
+    return parser.parse_args()
 
 
 def _loadCoreClasses(csvPath: Path) -> Dict[str, int]:
@@ -97,21 +108,28 @@ def _printDistribution(samples: List[SampleItem], coreMapping: Dict[str, int], l
 
 
 def main():
+    args = parseArgs()
+    pv_dir = Path(args.pvDir)
+    pd_train_dir = Path(args.pdTrainDir)
+    pd_test_dir = Path(args.pdTestDir)
+    core_classes_csv = Path(args.coreClassesCsv)
+    out_base = Path(args.outBase)
+
     print("=" * 70)
     print("  PlantDocAI — Two-Stage Split Generator")
     print("=" * 70)
 
     # 1. Load core classes
-    coreMapping = _loadCoreClasses(CORE_CLASSES_CSV)
+    coreMapping = _loadCoreClasses(core_classes_csv)
     numClasses = len(coreMapping)
-    print(f"\n[INFO] Loaded {numClasses} core classes from {CORE_CLASSES_CSV}")
+    print(f"\n[INFO] Loaded {numClasses} core classes from {core_classes_csv}")
 
     # STAGE 1 -- PlantVillage (core classes), split 80/10/10
     print("\n" + "-" * 70)
     print("  STAGE 1: PlantVillage (core classes)")
     print("-" * 70)
 
-    pvSamples = _scanAndFilter(PV_DIR, coreMapping)
+    pvSamples = _scanAndFilter(pv_dir, coreMapping)
     pvLabels = [s.labelId for s in pvSamples]
     print(f"[INFO] PlantVillage core samples: {len(pvSamples)}")
 
@@ -123,7 +141,7 @@ def main():
         pvTemp, tempLabels, test_size=0.50, random_state=SEED, stratify=tempLabels
     )
 
-    s1Dir = OUTPUT_BASE / "stage1"
+    s1Dir = out_base / "stage1"
     _writeSamplesCsv(s1Dir / "train.csv", pvTrain)
     _writeSamplesCsv(s1Dir / "val.csv", pvVal)
     _writeSamplesCsv(s1Dir / "test.csv", pvTest)
@@ -140,7 +158,7 @@ def main():
     print("  STAGE 2: PlantDoc train (core classes)")
     print("-" * 70)
 
-    pdTrainSamples = _scanAndFilter(PD_TRAIN_DIR, coreMapping)
+    pdTrainSamples = _scanAndFilter(pd_train_dir, coreMapping)
     pdLabels = [s.labelId for s in pdTrainSamples]
     print(f"[INFO] PlantDoc train core samples: {len(pdTrainSamples)}")
 
@@ -149,7 +167,7 @@ def main():
         pdTrainSamples, pdLabels, test_size=0.20, random_state=SEED, stratify=pdLabels
     )
 
-    s2Dir = OUTPUT_BASE / "stage2"
+    s2Dir = out_base / "stage2"
     _writeSamplesCsv(s2Dir / "train.csv", pdTrain)
     _writeSamplesCsv(s2Dir / "val.csv", pdVal)
     # Stage 2 cần một test.csv (dù rỗng hoặc dùng val) vì buildDataLoaders luôn đọc test.csv
@@ -167,10 +185,10 @@ def main():
     print("  PLANTDOC TEST: Final real-world benchmark")
     print("-" * 70)
 
-    pdTestSamples = _scanAndFilter(PD_TEST_DIR, coreMapping)
+    pdTestSamples = _scanAndFilter(pd_test_dir, coreMapping)
     print(f"[INFO] PlantDoc test core samples: {len(pdTestSamples)}")
 
-    pdTestDir = OUTPUT_BASE / "plantdoc_test"
+    pdTestDir = out_base / "plantdoc_test"
     _writeSamplesCsv(pdTestDir / "test.csv", pdTestSamples)
     # Cũng cần train/val placeholders cho buildDataLoaders nếu cần
     _writeSamplesCsv(pdTestDir / "train.csv", [])
