@@ -20,11 +20,21 @@ sys.path.insert(0, str(ROOT))
 
 from src.data.plantVillageDataset import IMG_EXTS
 
+import argparse
+
 # ── Đường dẫn mặc định ───────────────────────────────────────────────────────
-PV_DIR = ROOT / "data" / "extended" / "plantVillage" / "train"
-PD_TRAIN_DIR = ROOT / "data" / "extended" / "PlantDoc_Dataset_master" / "train"
-PD_TEST_DIR = ROOT / "data" / "extended" / "PlantDoc_Dataset_master" / "test"
-OUTPUT_DIR = ROOT / "data" / "splits" / "two_stage"
+DEFAULT_PV_DIR = str(ROOT / "data" / "extended" / "plantVillage" / "train")
+DEFAULT_PD_TRAIN_DIR = str(ROOT / "data" / "extended" / "PlantDoc_Dataset_master" / "train")
+DEFAULT_PD_TEST_DIR = str(ROOT / "data" / "extended" / "PlantDoc_Dataset_master" / "test")
+DEFAULT_OUTPUT_DIR = str(ROOT / "data" / "splits" / "two_stage")
+
+def parseArgs() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Build Core Class Mapping for Two-Stage Training")
+    parser.add_argument("--pvDir", type=str, default=DEFAULT_PV_DIR, help="Path to PlantVillage training data")
+    parser.add_argument("--pdTrainDir", type=str, default=DEFAULT_PD_TRAIN_DIR, help="Path to PlantDoc training data")
+    parser.add_argument("--pdTestDir", type=str, default=DEFAULT_PD_TEST_DIR, help="Path to PlantDoc test data")
+    parser.add_argument("--outDir", type=str, default=DEFAULT_OUTPUT_DIR, help="Output directory for core_classes.csv")
+    return parser.parse_args()
 
 
 def _scanClassFolders(rootDir: Path) -> dict[str, int]:
@@ -44,14 +54,20 @@ def _scanClassFolders(rootDir: Path) -> dict[str, int]:
 
 
 def main():
+    args = parseArgs()
+    pv_dir = Path(args.pvDir)
+    pd_train_dir = Path(args.pdTrainDir)
+    pd_test_dir = Path(args.pdTestDir)
+    out_dir = Path(args.outDir)
+
     print("=" * 70)
     print("  PlantDocAI — Core Class Mapping Builder")
     print("=" * 70)
 
     # 1. Quét cả hai dataset
-    pvClasses = _scanClassFolders(PV_DIR)
-    pdTrainClasses = _scanClassFolders(PD_TRAIN_DIR)
-    pdTestClasses = _scanClassFolders(PD_TEST_DIR)
+    pvClasses = _scanClassFolders(pv_dir)
+    pdTrainClasses = _scanClassFolders(pd_train_dir)
+    pdTestClasses = _scanClassFolders(pd_test_dir)
 
     print(f"\n[INFO] PlantVillage classes found: {len(pvClasses)}")
     print(f"[INFO] PlantDoc train classes found: {len(pdTrainClasses)}")
@@ -85,8 +101,8 @@ def main():
             print(f"  - {name} ({pvClasses[name]} images)")
 
     # 4. Lưu core_classes.csv
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    outPath = OUTPUT_DIR / "core_classes.csv"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    outPath = out_dir / "core_classes.csv"
     with open(outPath, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=["className", "labelId"])
         writer.writeheader()
