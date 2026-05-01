@@ -134,13 +134,42 @@ def main() -> None:
     else:
         criterion = nn.CrossEntropyLoss()
         
-    trainableModelParams = [param for param in model.parameters() if param.requires_grad]
-    
-    optimizer = torch.optim.Adam(
-        trainableModelParams,
-        lr=config.learningRate,
-        weight_decay=config.weightDecay,
-    )
+    if config.freezeBackbone:
+        trainableModelParams = [param for param in model.parameters() if param.requires_grad]
+        optimizer = torch.optim.Adam(
+            trainableModelParams,
+            lr=config.learningRate,
+            weight_decay=config.weightDecay,
+        )
+        print("[INFO] Using single learning rate for the newly initialized head.")
+    else:
+        classifier_params = []
+        try:
+            # Check if model has get_classifier (timm models usually do)
+            if hasattr(model, 'get_classifier'):
+                classifier_params = list(model.get_classifier().parameters())
+            else:
+                print("[WARN] Model does not have get_classifier(). Falling back to single learning rate.")
+        except Exception as e:
+             print(f"[WARN] Failed to get classifier for LLR: {e}")
+             
+        if classifier_params:
+            classifier_ids = set(id(p) for p in classifier_params)
+            backbone_params = [p for p in model.parameters() if id(p) not in classifier_ids and p.requires_grad]
+            
+            # Backbone gets 10x smaller learning rate to prevent catastrophic forgetting
+            optimizer = torch.optim.Adam([
+                {'params': backbone_params, 'lr': config.learningRate * 0.1},
+                {'params': classifier_params, 'lr': config.learningRate}
+            ], weight_decay=config.weightDecay)
+            print(f"[INFO] Using Layer-wise Learning Rate (LLR). Classifier LR: {config.learningRate}, Backbone LR: {config.learningRate * 0.1}")
+        else:
+            trainableModelParams = [param for param in model.parameters() if param.requires_grad]
+            optimizer = torch.optim.Adam(
+                trainableModelParams,
+                lr=config.learningRate,
+                weight_decay=config.weightDecay,
+            )
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
 
     # Prepare logic isolation for output paths (Google Drive aware)

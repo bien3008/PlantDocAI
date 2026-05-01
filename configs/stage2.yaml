@@ -32,12 +32,16 @@ mean: [0.485, 0.456, 0.406]
 std: [0.229, 0.224, 0.225]
 
 batchSize: 16
-numEpochs: 20
+numEpochs: 40
 learningRate: 0.0001
 weightDecay: 0.0001
 numWorkers: 2
 topK: 3
 device: "auto"
+
+# ── Early Stopping ───────────────────────────────────────────────
+earlyStoppingPatience: 7
+earlyStoppingMinDelta: 0.005
 
 # ── Class imbalance ──────────────────────────────────────────────
 # PlantDoc nhỏ hơn PV nhiều, sampler rất cần thiết.
@@ -51,7 +55,7 @@ augmentation:
   cropScaleMax: 1.00
   hflip: true
   vflip: true
-  elasticEnabled: true
+  elasticEnabled: false
   elasticAlpha: 30.0
   elasticSigma: 5.0
   elasticP: 0.35
@@ -68,17 +72,17 @@ augmentation:
   sharpnessEnabled: true
   sharpnessFactor: 1.5
   sharpnessP: 0.25
-  eraseEnabled: true
+  eraseEnabled: false
   eraseScaleMin: 0.02
   eraseScaleMax: 0.10
   eraseRatio: 1.0
   eraseP: 0.25
-  coarseDropoutEnabled: true
+  coarseDropoutEnabled: false
   coarseDropoutMaxHoles: 8
   coarseDropoutHoleHeight: 16
   coarseDropoutHoleWidth: 16
   coarseDropoutP: 0.35
-  gaussNoiseEnabled: true
+  gaussNoiseEnabled: false
   gaussNoiseVarMin: 5.0
   gaussNoiseVarMax: 30.0
   gaussNoiseP: 0.30
