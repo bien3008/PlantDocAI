@@ -41,9 +41,12 @@ from PIL import Image
 
 _TARGET_LAYER_REGISTRY: dict[str, str] = {
     "mobilenetv2":  "conv_head",       # MobileNetV2: 1×1 conv trước pooling
+    "mobilenetv3":  "conv_head",       # MobileNetV3: tương tự v2
     "efficientnet": "conv_head",       # EfficientNet-B*: cùng kiến trúc conv_head
     "convnext":     "stages[-1]",      # ConvNeXt: stage cuối
     "resnet":       "layer4",          # ResNet variants
+    "densenet":     "features",        # DenseNet
+    "regnet":       "s4",              # RegNet: stage 4
 }
 
 
